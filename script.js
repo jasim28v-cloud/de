@@ -1,1165 +1,983 @@
-import { firebaseConfig } from './firebase-config.js';
+import { auth, db, ref, push, set, onValue, update, get, child, CLOUD_NAME, UPLOAD_PRESET } from './firebase-config.js';
+import { signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.0/firebase-auth.js";
 
-// Initialize Firebase
-firebase.initializeApp(firebaseConfig);
-const auth = firebase.auth();
-const db = firebase.database();
-const storage = firebase.storage();
-
-// Admin email
-const ADMIN_EMAIL = "jasim28v@gmail.com";
-
-// Global state
+// ========== المتغيرات العامة ==========
 let currentUser = null;
-let currentView = 'home'; // home, explore, notifications, profile, admin, messages
-let currentProfileUserId = null;
-let currentChatUserId = null; // for direct messages
-let chatMessagesRef = null;
-let messageListener = null;
-let voiceRecorder = null;
-let recordingStream = null;
-let recordedChunks = [];
+let currentUserData = null;
+let allUsers = {};
+let allPosts = [];
+let allStories = [];
+let selectedMediaFile = null;
+let selectedMediaType = null;
+let currentChatUserId = null;
+let viewingProfileUserId = null;
+let currentPostForComments = null;
+let mediaRecorder = null;
+let audioChunks = [];
 
-// Helper functions
-function showToast(message, type = 'info') {
-  const toast = document.createElement('div');
-  toast.className = `toast toast-${type}`;
-  toast.innerText = message;
-  document.body.appendChild(toast);
-  setTimeout(() => toast.remove(), 3000);
-}
+const ADMIN_EMAILS = ['jasim28v@gmail.com'];
+let isAdmin = false;
 
-function formatDate(timestamp) {
-  if (!timestamp) return '';
-  return new Date(timestamp).toLocaleString('ar-EG');
-}
-
-function timeAgo(timestamp) {
-  const seconds = Math.floor((Date.now() - timestamp) / 1000);
-  if (seconds < 60) return 'الآن';
-  const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${minutes} دقيقة`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours} ساعة`;
-  const days = Math.floor(hours / 24);
-  return `${days} يوم`;
-}
-
-// ======================== AUTH ========================
-function renderLogin() {
-  const app = document.getElementById('app');
-  app.innerHTML = `
-    <div class="auth-wrapper">
-      <div class="auth-card glass">
-        <div class="logo"><i class="fas fa-crown"></i> سوسيال ميديا</div>
-        <h2>مرحباً بعودتك</h2>
-        <input type="email" id="login-email" placeholder="البريد الإلكتروني" />
-        <input type="password" id="login-password" placeholder="كلمة المرور" />
-        <button id="login-btn">دخول</button>
-        <div class="social-buttons">
-          <button id="google-login-btn" class="social"><i class="fab fa-google"></i> Google</button>
-          <button id="facebook-login-btn" class="social"><i class="fab fa-facebook-f"></i> Facebook</button>
-        </div>
-        <p>ليس لديك حساب؟ <a href="#" id="show-signup">سجل الآن</a></p>
-        <p><a href="#" id="forgot-password">نسيت كلمة المرور؟</a></p>
-      </div>
-    </div>
-  `;
-  document.getElementById('login-btn').addEventListener('click', login);
-  document.getElementById('google-login-btn').addEventListener('click', () => signInWithProvider('google'));
-  document.getElementById('facebook-login-btn').addEventListener('click', () => signInWithProvider('facebook'));
-  document.getElementById('show-signup').addEventListener('click', (e) => { e.preventDefault(); renderSignup(); });
-  document.getElementById('forgot-password').addEventListener('click', (e) => { e.preventDefault(); forgotPassword(); });
-}
-
-function renderSignup() {
-  const app = document.getElementById('app');
-  app.innerHTML = `
-    <div class="auth-wrapper">
-      <div class="auth-card glass">
-        <div class="logo"><i class="fas fa-crown"></i> سوسيال ميديا</div>
-        <h2>انضم إلينا</h2>
-        <input type="email" id="signup-email" placeholder="البريد الإلكتروني" />
-        <input type="text" id="signup-username" placeholder="اسم المستخدم" />
-        <input type="text" id="signup-fullname" placeholder="الاسم الكامل (اختياري)" />
-        <input type="password" id="signup-password" placeholder="كلمة المرور" />
-        <button id="signup-btn">تسجيل</button>
-        <p>لديك حساب؟ <a href="#" id="show-login">تسجيل الدخول</a></p>
-      </div>
-    </div>
-  `;
-  document.getElementById('signup-btn').addEventListener('click', signup);
-  document.getElementById('show-login').addEventListener('click', (e) => { e.preventDefault(); renderLogin(); });
-}
-
-async function login() {
-  const email = document.getElementById('login-email').value;
-  const password = document.getElementById('login-password').value;
-  try {
-    await auth.signInWithEmailAndPassword(email, password);
-    showToast('تم تسجيل الدخول بنجاح', 'success');
-  } catch (error) {
-    showToast(error.message, 'error');
-  }
-}
-
-async function signup() {
-  const email = document.getElementById('signup-email').value;
-  const username = document.getElementById('signup-username').value;
-  const fullName = document.getElementById('signup-fullname').value;
-  const password = document.getElementById('signup-password').value;
-  try {
-    const userCred = await auth.createUserWithEmailAndPassword(email, password);
-    const uid = userCred.user.uid;
-    await db.ref(`users/${uid}`).set({
-      username: username,
-      fullName: fullName,
-      email: email,
-      bio: '',
-      website: '',
-      photoURL: '',
-      private: false,
-      blocked: {},
-      followers: {},
-      following: {},
-      createdAt: Date.now()
-    });
-    showToast('تم إنشاء الحساب بنجاح', 'success');
-  } catch (error) {
-    showToast(error.message, 'error');
-  }
-}
-
-async function signInWithProvider(providerName) {
-  let provider;
-  if (providerName === 'google') provider = new firebase.auth.GoogleAuthProvider();
-  else provider = new firebase.auth.FacebookAuthProvider();
-  try {
-    const result = await auth.signInWithPopup(provider);
-    const user = result.user;
-    const userSnap = await db.ref(`users/${user.uid}`).once('value');
-    if (!userSnap.exists()) {
-      await db.ref(`users/${user.uid}`).set({
-        username: user.displayName || user.email.split('@')[0],
-        fullName: user.displayName || '',
-        email: user.email,
-        bio: '',
-        website: '',
-        photoURL: user.photoURL || '',
-        private: false,
-        blocked: {},
-        followers: {},
-        following: {},
-        createdAt: Date.now()
-      });
+// ========== المصادقة ==========
+window.switchAuth = function(type) {
+    const tabs = document.querySelectorAll('.auth-tab');
+    const forms = document.querySelectorAll('.auth-form');
+    tabs.forEach(t => t.classList.remove('active'));
+    forms.forEach(f => f.classList.remove('active'));
+    if (type === 'login') {
+        tabs[0].classList.add('active');
+        document.getElementById('loginForm').classList.add('active');
+    } else {
+        tabs[1].classList.add('active');
+        document.getElementById('registerForm').classList.add('active');
     }
-    showToast(`مرحباً ${user.displayName}`, 'success');
-  } catch (error) {
-    showToast(error.message, 'error');
-  }
-}
+};
 
-async function forgotPassword() {
-  const email = prompt('أدخل بريدك الإلكتروني لإعادة تعيين كلمة المرور');
-  if (email) {
+window.login = async function() {
+    const email = document.getElementById('loginEmail').value;
+    const password = document.getElementById('loginPassword').value;
+    const msg = document.getElementById('loginMsg');
+    if (!email || !password) { msg.innerText = 'الرجاء ملء جميع الحقول'; return; }
+    msg.innerText = 'جاري تسجيل الدخول...';
     try {
-      await auth.sendPasswordResetEmail(email);
-      showToast('تم إرسال رابط إعادة التعيين إلى بريدك', 'success');
+        await signInWithEmailAndPassword(auth, email, password);
+        msg.innerText = '';
     } catch (error) {
-      showToast(error.message, 'error');
+        if (error.code === 'auth/user-not-found') msg.innerText = 'لا يوجد حساب بهذا البريد';
+        else if (error.code === 'auth/wrong-password') msg.innerText = 'كلمة المرور غير صحيحة';
+        else msg.innerText = 'حدث خطأ: ' + error.message;
     }
-  }
-}
+};
 
-// ======================== MAIN APP ========================
-function renderMainApp() {
-  const app = document.getElementById('app');
-  const navItems = [
-    { icon: 'fas fa-home', view: 'home', label: 'الرئيسية' },
-    { icon: 'fas fa-compass', view: 'explore', label: 'استكشاف' },
-    { icon: 'fas fa-plus-circle', view: 'create', label: 'إضافة' },
-    { icon: 'fas fa-envelope', view: 'messages', label: 'الرسائل' },
-    { icon: 'fas fa-heart', view: 'notifications', label: 'إشعارات' },
-    { icon: 'fas fa-user', view: 'profile', label: 'حسابي' }
-  ];
-  if (currentUser && currentUser.email === ADMIN_EMAIL) {
-    navItems.push({ icon: 'fas fa-shield-alt', view: 'admin', label: 'تحكم' });
-  }
-
-  app.innerHTML = `
-    <div class="main-container">
-      <div class="stories-bar" id="stories-bar"></div>
-      <div class="content" id="content"></div>
-      <div class="bottom-nav">
-        ${navItems.map(item => `
-          <div class="nav-item ${currentView === item.view ? 'active' : ''}" data-view="${item.view}">
-            <i class="${item.icon}"></i>
-            <span>${item.label}</span>
-          </div>
-        `).join('')}
-      </div>
-    </div>
-  `;
-
-  // Attach nav listeners
-  document.querySelectorAll('.nav-item[data-view]').forEach(el => {
-    el.addEventListener('click', () => {
-      currentView = el.dataset.view;
-      if (currentView === 'profile') currentProfileUserId = currentUser.uid;
-      if (currentView === 'create') { showCreatePostModal(); return; }
-      if (currentView === 'messages') { currentChatUserId = null; }
-      if (messageListener && currentView !== 'messages') {
-        messageListener.off();
-        messageListener = null;
-      }
-      renderMainApp();
-    });
-  });
-
-  loadStories();
-  loadViewContent();
-}
-
-async function loadViewContent() {
-  const contentDiv = document.getElementById('content');
-  if (!contentDiv) return;
-
-  switch (currentView) {
-    case 'home': await loadHomeFeed(contentDiv); break;
-    case 'explore': await loadExploreFeed(contentDiv); break;
-    case 'notifications': await loadNotifications(contentDiv); break;
-    case 'profile': await loadProfile(contentDiv, currentProfileUserId); break;
-    case 'messages': await loadMessagesView(contentDiv); break;
-    case 'admin':
-      if (currentUser && currentUser.email === ADMIN_EMAIL) await loadAdminDashboard(contentDiv);
-      else currentView = 'home';
-      break;
-    default: await loadHomeFeed(contentDiv);
-  }
-}
-
-// ======================== FEEDS & POSTS ========================
-async function loadHomeFeed(container) {
-  container.innerHTML = '<div class="loading-spinner"><i class="fas fa-spinner fa-pulse"></i> جاري التحميل...</div>';
-  const snapshot = await db.ref('posts').once('value');
-  const posts = [];
-  snapshot.forEach(child => posts.push({ id: child.key, ...child.val() }));
-  posts.sort((a, b) => b.createdAt - a.createdAt);
-  renderPosts(container, posts);
-}
-
-async function loadExploreFeed(container) {
-  container.innerHTML = '<div class="loading-spinner"><i class="fas fa-spinner fa-pulse"></i> جاري التحميل...</div>';
-  const snapshot = await db.ref('posts').once('value');
-  const posts = [];
-  snapshot.forEach(child => posts.push({ id: child.key, ...child.val() }));
-  posts.sort((a, b) => (Object.keys(b.likes || {}).length) - (Object.keys(a.likes || {}).length));
-  renderPosts(container, posts);
-}
-
-function renderPosts(container, posts) {
-  if (!posts.length) {
-    container.innerHTML = '<div class="empty-state"><i class="fas fa-camera"></i> لا توجد منشورات بعد</div>';
-    return;
-  }
-  container.innerHTML = posts.map(post => `
-    <div class="post-card" data-post-id="${post.id}">
-      <div class="post-header">
-        <img class="avatar" src="${post.userPhoto || 'https://ui-avatars.com/api/?background=0095f6&color=fff&name=' + (post.username || 'U')}" alt="avatar">
-        <div class="post-user">
-          <span class="username">${post.username}</span>
-          <span class="time">${formatDate(post.createdAt)}</span>
-        </div>
-        ${(currentUser && (currentUser.uid === post.userId || currentUser.email === ADMIN_EMAIL)) ? `<button class="delete-post-btn" data-id="${post.id}"><i class="fas fa-trash-alt"></i></button>` : ''}
-      </div>
-      <div class="post-media">
-        ${post.type === 'video' ? `<video controls src="${post.mediaUrl}"></video>` : 
-          post.type === 'audio' ? `<audio controls src="${post.mediaUrl}"></audio>` : 
-          `<img src="${post.mediaUrl}" alt="post" loading="lazy">`}
-      </div>
-      <div class="post-actions">
-        <button class="like-btn ${post.likes && post.likes[currentUser?.uid] ? 'liked' : ''}" data-post-id="${post.id}"><i class="fas fa-heart"></i> <span>${Object.keys(post.likes || {}).length}</span></button>
-        <button class="comment-btn"><i class="fas fa-comment"></i> <span>${Object.keys(post.comments || {}).length}</span></button>
-        <button class="share-btn"><i class="fas fa-share-alt"></i></button>
-        <button class="save-btn"><i class="far fa-bookmark"></i></button>
-      </div>
-      <div class="post-caption">${post.caption || ''}</div>
-      <div class="comments-section" id="comments-${post.id}">
-        ${renderComments(post.comments)}
-      </div>
-      <div class="add-comment">
-        <input type="text" id="comment-input-${post.id}" placeholder="أضف تعليقاً...">
-        <button class="submit-comment" data-post-id="${post.id}">نشر</button>
-      </div>
-    </div>
-  `).join('');
-
-  // Attach like handlers
-  document.querySelectorAll('.like-btn').forEach(btn => {
-    btn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      const postId = btn.dataset.postId;
-      toggleLike(postId);
-    });
-  });
-  // Attach comment submit
-  document.querySelectorAll('.submit-comment').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const postId = btn.dataset.postId;
-      const input = document.getElementById(`comment-input-${postId}`);
-      if (input.value.trim()) addComment(postId, input.value.trim(), input);
-    });
-  });
-  // Delete post (admin or owner)
-  document.querySelectorAll('.delete-post-btn').forEach(btn => {
-    btn.addEventListener('click', async (e) => {
-      e.stopPropagation();
-      const postId = btn.dataset.id;
-      if (confirm('هل أنت متأكد من حذف هذا المنشور؟')) {
-        await deletePost(postId);
-      }
-    });
-  });
-}
-
-function renderComments(comments) {
-  if (!comments) return '';
-  let html = '';
-  for (let key in comments) {
-    const c = comments[key];
-    html += `<div class="comment"><strong>${c.username}</strong> ${c.text}</div>`;
-  }
-  return html;
-}
-
-async function toggleLike(postId) {
-  const likeRef = db.ref(`posts/${postId}/likes/${currentUser.uid}`);
-  const snap = await likeRef.once('value');
-  if (snap.exists()) {
-    await likeRef.remove();
-  } else {
-    await likeRef.set(true);
-    const postSnap = await db.ref(`posts/${postId}`).once('value');
-    const post = postSnap.val();
-    if (post.userId !== currentUser.uid) {
-      await db.ref(`notifications/${post.userId}`).push({
-        type: 'like',
-        fromUserId: currentUser.uid,
-        fromUsername: currentUser.displayName || currentUser.email,
-        postId: postId,
-        createdAt: Date.now(),
-        read: false
-      });
-    }
-  }
-  loadViewContent();
-}
-
-async function addComment(postId, text, inputEl) {
-  const commentId = db.ref().push().key;
-  await db.ref(`posts/${postId}/comments/${commentId}`).set({
-    uid: currentUser.uid,
-    username: currentUser.displayName || currentUser.email,
-    text: text,
-    createdAt: Date.now()
-  });
-  inputEl.value = '';
-  loadViewContent();
-}
-
-async function deletePost(postId) {
-  const postSnap = await db.ref(`posts/${postId}`).once('value');
-  const post = postSnap.val();
-  if (!post) return;
-  if (currentUser.uid === post.userId || currentUser.email === ADMIN_EMAIL) {
+window.register = async function() {
+    const name = document.getElementById('regName').value;
+    const email = document.getElementById('regEmail').value;
+    const password = document.getElementById('regPass').value;
+    const msg = document.getElementById('regMsg');
+    if (!name || !email || !password) { msg.innerText = 'املأ جميع الحقول'; return; }
+    if (password.length < 6) { msg.innerText = 'كلمة المرور 6 أحرف على الأقل'; return; }
+    msg.innerText = 'جاري إنشاء الحساب...';
     try {
-      const mediaRef = storage.refFromURL(post.mediaUrl);
-      await mediaRef.delete().catch(() => {});
-      await db.ref(`posts/${postId}`).remove();
-      showToast('تم حذف المنشور', 'success');
-      loadViewContent();
-    } catch (err) {
-      showToast('خطأ في الحذف', 'error');
+        const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+        await set(ref(db, `users/${userCredential.user.uid}`), {
+            name, email, bio: '', avatarUrl: '', coverUrl: '', followers: {}, following: {}, createdAt: Date.now()
+        });
+        msg.innerText = '';
+    } catch (error) {
+        if (error.code === 'auth/email-already-in-use') msg.innerText = 'البريد الإلكتروني مستخدم بالفعل';
+        else msg.innerText = 'حدث خطأ: ' + error.message;
     }
-  } else {
-    showToast('ليس لديك صلاحية', 'error');
-  }
+};
+
+window.logout = function() { signOut(auth); location.reload(); };
+
+// ========== تحميل البيانات ==========
+async function loadUserData() {
+    const snap = await get(child(ref(db), `users/${currentUser.uid}`));
+    if (snap.exists()) currentUserData = { uid: currentUser.uid, ...snap.val() };
+}
+onValue(ref(db, 'users'), (s) => { allUsers = s.val() || {}; });
+
+// ========== رفع الوسائط ==========
+async function uploadMedia(file) {
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('upload_preset', UPLOAD_PRESET);
+    let resourceType = 'image';
+    if (file.type.startsWith('video/')) resourceType = 'video';
+    else if (file.type.startsWith('audio/')) resourceType = 'raw';
+    formData.append('resource_type', resourceType);
+    const url = `https://api.cloudinary.com/v1_1/${CLOUD_NAME}/${resourceType}/upload`;
+    const response = await fetch(url, { method: 'POST', body: formData });
+    const data = await response.json();
+    return { url: data.secure_url, type: resourceType === 'raw' ? 'audio' : resourceType };
 }
 
-// ======================== CREATE POST (with voice recording) ========================
-function showCreatePostModal() {
-  // Create modal for post options (image, video, audio)
-  const modal = document.createElement('div');
-  modal.className = 'modal-overlay';
-  modal.innerHTML = `
-    <div class="modal-content">
-      <h3>إنشاء منشور جديد</h3>
-      <button id="post-image-video"><i class="fas fa-image"></i> صورة / فيديو</button>
-      <button id="post-audio"><i class="fas fa-microphone"></i> تسجيل صوتي</button>
-      <button id="close-modal">إلغاء</button>
-    </div>
-  `;
-  document.body.appendChild(modal);
-  document.getElementById('post-image-video').addEventListener('click', () => {
-    modal.remove();
+// ========== عرض المنشورات ==========
+onValue(ref(db, 'posts'), (s) => {
+    const data = s.val();
+    if (!data) { allPosts = []; renderFeed(); return; }
+    allPosts = [];
+    Object.keys(data).forEach(key => allPosts.push({ id: key, ...data[key] }));
+    allPosts.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+    renderFeed();
+});
+
+function renderFeed() {
+    const container = document.getElementById('feedContainer');
+    if (!container) return;
+    container.innerHTML = '';
+    if (allPosts.length === 0) {
+        container.innerHTML = '<div class="loading"><div class="spinner"></div><span>✨ لا توجد منشورات بعد</span></div>';
+        return;
+    }
+    allPosts.forEach(post => {
+        const user = allUsers[post.sender] || { name: post.senderName || 'user', avatarUrl: '' };
+        const isLiked = post.likedBy && post.likedBy[currentUser?.uid];
+        const commentsCount = post.comments ? Object.keys(post.comments).length : 0;
+        let mediaHtml = '';
+        if (post.mediaUrl) {
+            if (post.mediaType === 'image') mediaHtml = `<div class="tweet-media"><img src="${post.mediaUrl}" loading="lazy"></div>`;
+            else if (post.mediaType === 'video') mediaHtml = `<div class="tweet-media"><video controls src="${post.mediaUrl}"></video></div>`;
+            else if (post.mediaType === 'audio') mediaHtml = `<div class="tweet-media"><audio controls src="${post.mediaUrl}"></audio></div>`;
+        }
+        const div = document.createElement('div');
+        div.className = 'tweet-card';
+        div.innerHTML = `
+            <div class="tweet-header">
+                <div class="tweet-avatar" onclick="viewProfile('${post.sender}')">${user.avatarUrl ? `<img src="${user.avatarUrl}">` : (user.name?.charAt(0) || '👤')}</div>
+                <div><div class="tweet-name" onclick="viewProfile('${post.sender}')">${user.name}</div><div class="tweet-username">@${user.name?.toLowerCase().replace(/\s/g, '')}</div><div class="tweet-time">${new Date(post.timestamp).toLocaleString()}</div></div>
+            </div>
+            <div class="tweet-content">${post.text || ''}</div>
+            ${mediaHtml}
+            <div class="tweet-actions">
+                <button class="tweet-action ${isLiked ? 'active' : ''}" onclick="toggleLike('${post.id}', this)"><i class="fas fa-heart"></i> <span>${post.likes || 0}</span></button>
+                <button class="tweet-action" onclick="openCommentsModal('${post.id}')"><i class="fas fa-comment"></i> <span>${commentsCount}</span></button>
+                <button class="tweet-action" onclick="sharePost('${post.id}')"><i class="fas fa-share"></i></button>
+                ${post.sender === currentUser?.uid ? `<button class="tweet-action" onclick="deletePost('${post.id}')"><i class="fas fa-trash"></i></button>` : ''}
+            </div>
+        `;
+        container.appendChild(div);
+    });
+}
+
+window.deletePost = async function(postId) {
+    if (!confirm('🗑️ هل أنت متأكد من حذف هذا المنشور؟')) return;
+    await set(ref(db, `posts/${postId}`), null);
+    showToast('✅ تم حذف المنشور');
+};
+
+// ========== إنشاء منشور ==========
+window.openCompose = function() { 
+    const panel = document.getElementById('composePanel');
+    if (panel) panel.classList.add('open'); 
+    const backBtn = document.getElementById('backBtn');
+    if (backBtn) backBtn.style.display = 'flex';
+    resetCompose(); 
+};
+window.closeCompose = function() { 
+    const panel = document.getElementById('composePanel');
+    if (panel) panel.classList.remove('open'); 
+    const backBtn = document.getElementById('backBtn');
+    if (backBtn && !document.querySelector('.panel.open')) backBtn.style.display = 'none'; 
+};
+
+function resetCompose() {
+    const postText = document.getElementById('postText');
+    const mediaPreview = document.getElementById('mediaPreview');
+    const postImage = document.getElementById('postImage');
+    const postVideo = document.getElementById('postVideo');
+    const postStatus = document.getElementById('postStatus');
+    if (postText) postText.value = '';
+    if (mediaPreview) { mediaPreview.innerHTML = ''; mediaPreview.style.display = 'none'; }
+    selectedMediaFile = null;
+    if (postImage) postImage.value = '';
+    if (postVideo) postVideo.value = '';
+    if (postStatus) postStatus.innerHTML = '';
+}
+
+window.previewMedia = function(input, type) {
+    const file = input.files[0];
+    if (!file) return;
+    selectedMediaFile = file;
+    selectedMediaType = type;
+    const reader = new FileReader();
+    reader.onload = function(e) {
+        const mediaPreview = document.getElementById('mediaPreview');
+        if (mediaPreview) {
+            if (type === 'image') mediaPreview.innerHTML = `<img src="${e.target.result}" class="max-h-48 rounded-lg">`;
+            else if (type === 'video') mediaPreview.innerHTML = `<video controls class="max-h-48 rounded-lg"><source src="${e.target.result}"></video>`;
+            mediaPreview.style.display = 'block';
+        }
+    };
+    reader.readAsDataURL(file);
+};
+
+window.startAudioRecording = async function() {
+    const btn = document.getElementById('audioRecordBtn');
+    if (mediaRecorder && mediaRecorder.state === 'recording') {
+        mediaRecorder.stop();
+        if (btn) btn.innerHTML = '<i class="fas fa-microphone"></i>';
+        return;
+    }
+    try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        mediaRecorder = new MediaRecorder(stream);
+        audioChunks = [];
+        mediaRecorder.ondataavailable = (event) => { audioChunks.push(event.data); };
+        mediaRecorder.onstop = async () => {
+            const audioBlob = new Blob(audioChunks, { type: 'audio/mp3' });
+            const audioFile = new File([audioBlob], 'recording.mp3', { type: 'audio/mp3' });
+            selectedMediaFile = audioFile;
+            selectedMediaType = 'audio';
+            const audioUrl = URL.createObjectURL(audioBlob);
+            const mediaPreview = document.getElementById('mediaPreview');
+            if (mediaPreview) {
+                mediaPreview.innerHTML = `<audio controls src="${audioUrl}"></audio>`;
+                mediaPreview.style.display = 'block';
+            }
+            stream.getTracks().forEach(track => track.stop());
+        };
+        mediaRecorder.start();
+        if (btn) btn.innerHTML = '<i class="fas fa-stop-circle text-red-500"></i>';
+    } catch (err) { showToast('❌ لا يمكن الوصول إلى الميكروفون'); }
+};
+
+window.createPost = async function() {
+    const text = document.getElementById('postText')?.value || '';
+    if (!text.trim() && !selectedMediaFile) { showToast('✏️ اكتب شيئاً أو اختر وسائط'); return; }
+    const status = document.getElementById('postStatus');
+    if (status) status.innerHTML = '📤 جاري النشر...';
+    let mediaUrl = '', mediaType = 'none';
+    if (selectedMediaFile) {
+        try {
+            const result = await uploadMedia(selectedMediaFile);
+            mediaUrl = result.url;
+            mediaType = result.type;
+        } catch (error) { 
+            if (status) status.innerHTML = '❌ فشل رفع الوسائط'; 
+            return;
+        }
+    }
+    try {
+        await push(ref(db, 'posts'), {
+            text, mediaUrl, mediaType,
+            sender: currentUser.uid,
+            senderName: currentUserData?.name,
+            likes: 0, likedBy: {}, retweets: {}, comments: {},
+            timestamp: Date.now()
+        });
+        if (status) status.innerHTML = '✅ تم النشر!';
+        setTimeout(() => closeCompose(), 1500);
+    } catch (error) { 
+        if (status) status.innerHTML = '❌ فشل النشر'; 
+    }
+};
+
+// ========== التفاعلات ==========
+window.toggleLike = async function(postId, btn) {
+    if (!currentUser) return;
+    const postRef = ref(db, `posts/${postId}`);
+    const snap = await get(postRef);
+    const post = snap.val();
+    if (!post) return;
+    let likes = post.likes || 0;
+    let likedBy = post.likedBy || {};
+    if (likedBy[currentUser.uid]) { 
+        likes--; 
+        delete likedBy[currentUser.uid]; 
+    } else { 
+        likes++; 
+        likedBy[currentUser.uid] = true; 
+        addNotification(post.sender, 'like', postId);
+    }
+    await update(postRef, { likes, likedBy });
+    if (btn) {
+        btn.classList.toggle('active');
+        const span = btn.querySelector('span');
+        if (span) span.innerText = likes;
+    }
+};
+
+window.sharePost = function(postId) {
+    const url = `${window.location.origin}?post=${postId}`;
+    navigator.clipboard.writeText(url);
+    showToast('✅ تم نسخ الرابط');
+};
+
+// ========== التعليقات ==========
+window.openCommentsModal = async function(postId) {
+    currentPostForComments = postId;
+    const post = allPosts.find(p => p.id === postId);
+    if (!post) return;
+    const container = document.getElementById('commentsList');
+    const comments = post.comments || {};
+    if (!container) return;
+    container.innerHTML = '';
+    Object.values(comments).sort((a,b) => b.timestamp - a.timestamp).forEach(comment => {
+        const user = allUsers[comment.userId] || { name: comment.username || 'user', avatarUrl: '' };
+        const replies = comment.replies || {};
+        const commentId = Object.keys(comments).find(k => comments[k] === comment) || Date.now();
+        const commentDiv = document.createElement('div');
+        commentDiv.className = 'comment-item';
+        commentDiv.innerHTML = `
+            <div class="comment-header"><div class="comment-avatar" onclick="viewProfile('${comment.userId}')">${user.avatarUrl ? `<img src="${user.avatarUrl}">` : (user.name?.charAt(0) || '👤')}</div><div><div class="comment-user" onclick="viewProfile('${comment.userId}')">${user.name}</div><div class="comment-time">${new Date(comment.timestamp).toLocaleString()}</div></div></div>
+            <div class="comment-text">${comment.text}</div>
+            <div class="reply-list" id="replies-${commentId}"></div>
+            <div><button class="text-[#1d9bf0] text-sm" onclick="showReplyInput('${commentId}')"><i class="fas fa-reply"></i> رد</button></div>
+            <div id="reply-input-${commentId}" class="mt-2"></div>
+        `;
+        const repliesContainer = commentDiv.querySelector(`#replies-${commentId}`);
+        if (repliesContainer) {
+            Object.values(replies).sort((a,b) => a.timestamp - b.timestamp).forEach(reply => {
+                const replyUser = allUsers[reply.userId] || { name: reply.username || 'user', avatarUrl: '' };
+                repliesContainer.innerHTML += `
+                    <div class="reply-item"><div class="reply-header"><div class="reply-avatar">${replyUser.avatarUrl ? `<img src="${replyUser.avatarUrl}">` : (replyUser.name?.charAt(0) || '👤')}</div><div class="reply-user">${replyUser.name}</div><div class="comment-time">${new Date(reply.timestamp).toLocaleTimeString()}</div></div><div class="reply-text">${reply.text}</div></div>
+                `;
+            });
+        }
+        container.appendChild(commentDiv);
+    });
+    const commentsPanel = document.getElementById('commentsPanel');
+    const backBtn = document.getElementById('backBtn');
+    if (commentsPanel) commentsPanel.classList.add('open');
+    if (backBtn) backBtn.style.display = 'flex';
+};
+
+window.closeComments = function() {
+    const commentsPanel = document.getElementById('commentsPanel');
+    const backBtn = document.getElementById('backBtn');
+    if (commentsPanel) commentsPanel.classList.remove('open');
+    if (backBtn && !document.querySelector('.panel.open')) backBtn.style.display = 'none';
+};
+
+window.showReplyInput = function(commentId) {
+    const replyDiv = document.getElementById(`reply-input-${commentId}`);
+    if (!replyDiv) return;
+    if (replyDiv.innerHTML) { replyDiv.innerHTML = ''; return; }
+    replyDiv.innerHTML = `<div class="flex gap-2 mt-2"><input type="text" id="reply-text-${commentId}" class="flex-1 bg-[#1a1a2a] border border-[#2a2a2a] rounded-full px-3 py-1 text-sm" placeholder="اكتب رداً..."><button onclick="addReply('${commentId}')" class="bg-[#1d9bf0] text-white px-3 py-1 rounded-full text-sm">نشر</button></div>`;
+};
+
+window.addReply = async function(commentId) {
+    const input = document.getElementById(`reply-text-${commentId}`);
+    const text = input?.value;
+    if (!text?.trim()) return;
+    const postRef = ref(db, `posts/${currentPostForComments}/comments/${commentId}/replies`);
+    await push(postRef, { userId: currentUser.uid, username: currentUserData?.name, text, timestamp: Date.now() });
+    if (input) input.value = '';
+    openCommentsModal(currentPostForComments);
+};
+
+window.addComment = async function() {
+    const input = document.getElementById('commentInput');
+    const text = input?.value;
+    if (!text?.trim() || !currentPostForComments) return;
+    await push(ref(db, `posts/${currentPostForComments}/comments`), {
+        userId: currentUser.uid, username: currentUserData?.name, text, replies: {}, timestamp: Date.now()
+    });
+    if (input) input.value = '';
+    openCommentsModal(currentPostForComments);
+    addNotification(allPosts.find(p => p.id === currentPostForComments)?.sender, 'comment', currentPostForComments);
+};
+
+// ========== الإشعارات ==========
+async function addNotification(targetUserId, type, postId = null) {
+    if (targetUserId === currentUser.uid) return;
+    const messages = { 
+        like: '❤️ أعجب بمنشورك', 
+        comment: '💬 علق على منشورك', 
+        follow: '👥 بدأ بمتابعتك', 
+        unfollow: '👋 توقف عن متابعتك' 
+    };
+    await push(ref(db, `notifications/${targetUserId}`), {
+        type, fromUserId: currentUser.uid, fromUsername: currentUserData?.name,
+        message: messages[type], postId: postId, timestamp: Date.now(), read: false
+    });
+    updateNotificationBadge();
+    showToast(`📢 ${messages[type]} من ${currentUserData?.name}`);
+}
+
+function updateNotificationBadge() {
+    if (!currentUser?.uid) return;
+    onValue(ref(db, `notifications/${currentUser.uid}`), (snap) => {
+        const notifs = snap.val() || {};
+        const unread = Object.values(notifs).filter(n => !n.read).length;
+        const icon = document.getElementById('notifIcon');
+        if (icon) {
+            if (unread > 0) icon.innerHTML = `<i class="fas fa-bell"></i><span class="notification-badge">${unread > 9 ? '9+' : unread}</span>`;
+            else icon.innerHTML = '<i class="far fa-bell"></i>';
+        }
+    });
+}
+
+window.openNotifications = async function() {
+    const panel = document.getElementById('notificationsPanel');
+    if (!panel) return;
+    const snap = await get(child(ref(db), `notifications/${currentUser.uid}`));
+    const notifs = snap.val() || {};
+    const container = document.getElementById('notificationsList');
+    if (!container) return;
+    container.innerHTML = '';
+    const sorted = Object.entries(notifs).sort((a,b) => b[1].timestamp - a[1].timestamp);
+    for (const [key, n] of sorted) {
+        const icon = n.type === 'like' ? '❤️' : n.type === 'comment' ? '💬' : n.type === 'follow' ? '👥' : '📢';
+        const bgColor = n.read ? '' : 'bg-[#1d9bf0]/10 border-r-4 border-[#1d9bf0]';
+        container.innerHTML += `
+            <div class="notification-item ${bgColor} cursor-pointer hover:bg-[#1a1a2a] transition" onclick="handleNotificationClick('${n.type}', '${n.fromUserId}', '${n.postId || ''}')">
+                <div class="text-2xl">${icon}</div>
+                <div class="flex-1">
+                    <div class="font-bold">${n.fromUsername}</div>
+                    <div class="text-sm text-gray-400">${n.message}</div>
+                    <div class="text-xs text-gray-500 mt-1">${new Date(n.timestamp).toLocaleString()}</div>
+                </div>
+            </div>
+        `;
+        if (!n.read) await update(ref(db, `notifications/${currentUser.uid}/${key}`), { read: true });
+    }
+    if (container.innerHTML === '') container.innerHTML = '<div class="text-center text-gray-500 py-10">🔔 لا توجد إشعارات</div>';
+    panel.classList.add('open');
+    const backBtn = document.getElementById('backBtn');
+    if (backBtn) backBtn.style.display = 'flex';
+    updateNotificationBadge();
+};
+
+window.handleNotificationClick = function(type, userId, postId) {
+    closeNotifications();
+    if (type === 'follow') {
+        viewProfile(userId);
+    } else if (postId) {
+        openCommentsModal(postId);
+    }
+};
+
+window.closeNotifications = function() {
+    const panel = document.getElementById('notificationsPanel');
+    const backBtn = document.getElementById('backBtn');
+    if (panel) panel.classList.remove('open');
+    if (backBtn && !document.querySelector('.panel.open')) backBtn.style.display = 'none';
+};
+
+function showToast(message) {
+    let toast = document.getElementById('customToast');
+    if (!toast) {
+        toast = document.createElement('div');
+        toast.id = 'customToast';
+        toast.style.cssText = 'position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:#1d9bf0;color:white;padding:12px 24px;border-radius:50px;z-index:1000;font-size:14px;opacity:0;transition:0.3s;pointer-events:none;';
+        document.body.appendChild(toast);
+    }
+    toast.innerText = message;
+    toast.style.opacity = '1';
+    setTimeout(() => { toast.style.opacity = '0'; }, 3000);
+}
+
+// ========== الملف الشخصي ==========
+window.openMyProfile = function() { viewProfile(currentUser.uid); };
+
+window.viewProfile = async function(userId) {
+    if (!userId) return;
+    viewingProfileUserId = userId;
+    await loadProfileData(userId);
+    const profilePanel = document.getElementById('profilePanel');
+    const backBtn = document.getElementById('backBtn');
+    if (profilePanel) profilePanel.classList.add('open');
+    if (backBtn) backBtn.style.display = 'flex';
+};
+
+window.closeProfile = function() {
+    const profilePanel = document.getElementById('profilePanel');
+    const backBtn = document.getElementById('backBtn');
+    if (profilePanel) profilePanel.classList.remove('open');
+    if (backBtn && !document.querySelector('.panel.open')) backBtn.style.display = 'none';
+};
+
+async function loadProfileData(userId) {
+    const userSnap = await get(child(ref(db), `users/${userId}`));
+    const user = userSnap.val();
+    if (!user) return;
+    
+    const coverEl = document.getElementById('profileCover');
+    if (coverEl) {
+        if (user.coverUrl) coverEl.style.background = `url(${user.coverUrl}) center/cover`;
+        else coverEl.style.background = 'linear-gradient(135deg, #1d9bf0, #f91880)';
+    }
+    
+    const avatarEl = document.getElementById('profileAvatar');
+    if (avatarEl) {
+        avatarEl.innerHTML = user.avatarUrl ? `<img src="${user.avatarUrl}">` : (user.name?.charAt(0) || '👤');
+    }
+    
+    const nameEl = document.getElementById('profileName');
+    const bioEl = document.getElementById('profileBio');
+    if (nameEl) nameEl.innerText = user.name;
+    if (bioEl) bioEl.innerText = user.bio || '✏️ أضف سيرة ذاتية';
+    
+    const userPosts = allPosts.filter(p => p.sender === userId);
+    const postsCountEl = document.getElementById('profilePostsCount');
+    const followersCountEl = document.getElementById('profileFollowersCount');
+    const followingCountEl = document.getElementById('profileFollowingCount');
+    if (postsCountEl) postsCountEl.innerText = userPosts.length;
+    if (followersCountEl) followersCountEl.innerText = Object.keys(user.followers || {}).length;
+    if (followingCountEl) followingCountEl.innerText = Object.keys(user.following || {}).length;
+    
+    const grid = document.getElementById('profilePostsGrid');
+    if (grid) {
+        grid.innerHTML = userPosts.map(post => `
+            <div class="profile-post" onclick="openCommentsModal('${post.id}')">
+                ${post.mediaUrl ? (post.mediaType === 'image' ? `<img src="${post.mediaUrl}" loading="lazy">` : post.mediaType === 'video' ? `<video src="${post.mediaUrl}"></video>` : `<i class="fas fa-music text-2xl"></i>`) : `<i class="fas fa-file-alt text-2xl"></i>`}
+                ${post.text ? `<div class="absolute bottom-0 left-0 right-0 bg-black/50 text-white text-xs p-1 truncate">${post.text.substring(0, 30)}</div>` : ''}
+            </div>
+        `).join('');
+        if (userPosts.length === 0) grid.innerHTML = '<div class="col-span-3 text-center text-gray-500 py-10">📭 لا توجد منشورات</div>';
+    }
+    
+    const buttonsDiv = document.getElementById('profileButtons');
+    if (buttonsDiv) {
+        buttonsDiv.innerHTML = '';
+        if (userId === currentUser.uid) {
+            buttonsDiv.innerHTML = `
+                <button class="profile-btn profile-btn-primary" onclick="openEditProfile()">✏️ تعديل الملف</button>
+                <button class="profile-btn profile-btn-secondary" onclick="logout()">🚪 تسجيل خروج</button>
+                ${isAdmin ? '<button class="profile-btn profile-btn-secondary" onclick="openAdmin()">🔧 لوحة التحكم</button>' : ''}
+            `;
+        } else {
+            const isFollowing = currentUserData?.following && currentUserData.following[userId];
+            buttonsDiv.innerHTML = `
+                <button class="profile-btn profile-btn-primary" onclick="toggleFollow('${userId}', this)">${isFollowing ? '✅ متابع' : '➕ متابعة'}</button>
+                <button class="profile-btn profile-btn-secondary" onclick="openPrivateChat('${userId}')"><i class="fas fa-envelope"></i> مراسلة</button>
+            `;
+        }
+    }
+    
+    setupProfileTabs(userPosts);
+}
+
+function setupProfileTabs(userPosts) {
+    const tabs = document.querySelectorAll('.profile-tab');
+    const grid = document.getElementById('profilePostsGrid');
+    if (!tabs.length || !grid) return;
+    
+    tabs.forEach(tab => {
+        tab.onclick = () => {
+            tabs.forEach(t => t.classList.remove('active'));
+            tab.classList.add('active');
+            const filter = tab.getAttribute('data-tab');
+            let filtered = [...userPosts];
+            if (filter === 'media') filtered = userPosts.filter(p => p.mediaUrl && p.mediaType !== 'none');
+            grid.innerHTML = filtered.map(post => `
+                <div class="profile-post" onclick="openCommentsModal('${post.id}')">
+                    ${post.mediaUrl ? (post.mediaType === 'image' ? `<img src="${post.mediaUrl}" loading="lazy">` : post.mediaType === 'video' ? `<video src="${post.mediaUrl}"></video>` : `<i class="fas fa-music text-2xl"></i>`) : `<i class="fas fa-file-alt text-2xl"></i>`}
+                </div>
+            `).join('');
+            if (filtered.length === 0) grid.innerHTML = '<div class="col-span-3 text-center text-gray-500 py-10">📭 لا توجد منشورات</div>';
+        };
+    });
+}
+
+window.openEditProfile = function() {
+    const newName = prompt('الاسم الجديد:', currentUserData?.name);
+    const newBio = prompt('السيرة الذاتية:', currentUserData?.bio || '');
+    if (newName && newName.trim()) update(ref(db, `users/${currentUser.uid}`), { name: newName.trim() });
+    if (newBio !== null) update(ref(db, `users/${currentUser.uid}`), { bio: newBio });
+    if ((newName && newName.trim()) || newBio !== null) {
+        showToast('✅ تم تحديث الملف الشخصي');
+        setTimeout(() => location.reload(), 1000);
+    }
+};
+
+window.changeAvatar = function() { document.getElementById('avatarInput')?.click(); };
+window.changeCover = function() { document.getElementById('coverInput')?.click(); };
+
+if (!document.getElementById('avatarInput')) {
+    const avatarInput = document.createElement('input');
+    avatarInput.type = 'file';
+    avatarInput.accept = 'image/*';
+    avatarInput.id = 'avatarInput';
+    avatarInput.style.display = 'none';
+    document.body.appendChild(avatarInput);
+    avatarInput.addEventListener('change', async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        const result = await uploadMedia(file);
+        await update(ref(db, `users/${currentUser.uid}`), { avatarUrl: result.url });
+        showToast('✅ تم تحديث الصورة الشخصية');
+        location.reload();
+    });
+}
+
+if (!document.getElementById('coverInput')) {
+    const coverInput = document.createElement('input');
+    coverInput.type = 'file';
+    coverInput.accept = 'image/*';
+    coverInput.id = 'coverInput';
+    coverInput.style.display = 'none';
+    document.body.appendChild(coverInput);
+    coverInput.addEventListener('change', async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        const result = await uploadMedia(file);
+        await update(ref(db, `users/${currentUser.uid}`), { coverUrl: result.url });
+        showToast('✅ تم تحديث صورة الغلاف');
+        location.reload();
+    });
+}
+
+// ========== المتابعة ==========
+window.toggleFollow = async function(userId, btn) {
+    if (!currentUser || currentUser.uid === userId) return;
+    const userRef = ref(db, `users/${currentUser.uid}/following/${userId}`);
+    const targetRef = ref(db, `users/${userId}/followers/${currentUser.uid}`);
+    const snap = await get(userRef);
+    if (snap.exists()) {
+        await set(userRef, null); 
+        await set(targetRef, null); 
+        if (btn) btn.innerText = '➕ متابعة';
+        addNotification(userId, 'unfollow');
+        showToast(`👋 توقفت عن متابعة ${allUsers[userId]?.name}`);
+    } else {
+        await set(userRef, true); 
+        await set(targetRef, true); 
+        if (btn) btn.innerText = '✅ متابع';
+        addNotification(userId, 'follow');
+        showToast(`👥 بدأت بمتابعة ${allUsers[userId]?.name}`);
+    }
+    if (viewingProfileUserId === userId) await loadProfileData(userId);
+};
+
+// ========== قائمة المتابعين ==========
+window.openFollowersList = async function(type) {
+    const titleEl = document.getElementById('followersTitle');
+    if (titleEl) titleEl.innerText = type === 'followers' ? '👥 المتابعون' : '👤 المتابَعون';
+    const panel = document.getElementById('followersPanel');
+    const container = document.getElementById('followersList');
+    const user = viewingProfileUserId ? allUsers[viewingProfileUserId] : currentUserData;
+    const list = type === 'followers' ? user?.followers : user?.following;
+    if (!container) return;
+    container.innerHTML = '';
+    if (list) {
+        for (const [uid] of Object.entries(list)) {
+            const u = allUsers[uid];
+            if (u) {
+                container.innerHTML += `<div class="follower-item" onclick="viewProfile('${uid}')"><div class="w-12 h-12 rounded-full bg-[#1d9bf0] flex items-center justify-center overflow-hidden">${u.avatarUrl ? `<img src="${u.avatarUrl}">` : (u.name?.charAt(0) || 'U')}</div><div><div class="font-bold">${u.name}</div><div class="text-sm text-gray-500">@${u.name?.toLowerCase().replace(/\s/g, '')}</div></div></div>`;
+            }
+        }
+    }
+    if (container.innerHTML === '') container.innerHTML = '<div class="text-center text-gray-500 py-10">👻 لا يوجد مستخدمين</div>';
+    if (panel) panel.classList.add('open');
+    const backBtn = document.getElementById('backBtn');
+    if (backBtn) backBtn.style.display = 'flex';
+};
+window.closeFollowers = function() {
+    const panel = document.getElementById('followersPanel');
+    const backBtn = document.getElementById('backBtn');
+    if (panel) panel.classList.remove('open');
+    if (backBtn && !document.querySelector('.panel.open')) backBtn.style.display = 'none';
+};
+
+// ========== الدردشة ==========
+function getChatId(uid1, uid2) { return uid1 < uid2 ? `${uid1}_${uid2}` : `${uid2}_${uid1}`; }
+
+window.openConversations = async function() {
+    const panel = document.getElementById('conversationsPanel');
+    const container = document.getElementById('conversationsList');
+    if (!panel || !container) return;
+    const convSnap = await get(child(ref(db), `private_chats/${currentUser.uid}`));
+    const conversations = convSnap.val() || {};
+    container.innerHTML = '';
+    for (const [otherId, convData] of Object.entries(conversations)) {
+        const otherUser = allUsers[otherId];
+        if (otherUser) {
+            container.innerHTML += `<div class="conversation-item" onclick="openPrivateChat('${otherId}')"><div class="w-12 h-12 rounded-full bg-[#1d9bf0] flex items-center justify-center overflow-hidden">${otherUser.avatarUrl ? `<img src="${otherUser.avatarUrl}">` : (otherUser.name?.charAt(0) || 'U')}</div><div><div class="font-bold">${otherUser.name}</div><div class="text-sm text-gray-500">${convData.lastMessage?.substring(0, 40) || 'رسالة'}</div></div></div>`;
+        }
+    }
+    if (container.innerHTML === '') container.innerHTML = '<div class="text-center text-gray-500 py-10">💬 لا توجد محادثات بعد</div>';
+    panel.classList.add('open');
+    const backBtn = document.getElementById('backBtn');
+    if (backBtn) backBtn.style.display = 'flex';
+};
+window.closeConversations = function() {
+    const panel = document.getElementById('conversationsPanel');
+    const backBtn = document.getElementById('backBtn');
+    if (panel) panel.classList.remove('open');
+    if (backBtn && !document.querySelector('.panel.open')) backBtn.style.display = 'none';
+};
+
+window.openPrivateChat = async function(otherUserId) {
+    currentChatUserId = otherUserId;
+    const user = allUsers[otherUserId];
+    const userNameEl = document.getElementById('chatUserName');
+    const chatAvatarEl = document.getElementById('chatAvatar');
+    if (userNameEl) userNameEl.innerText = user?.name || 'مستخدم';
+    if (chatAvatarEl) chatAvatarEl.innerHTML = user?.avatarUrl ? `<img src="${user.avatarUrl}">` : (user?.name?.charAt(0) || 'U');
+    await loadPrivateMessages(otherUserId);
+    const chatPanel = document.getElementById('chatPanel');
+    const backBtn = document.getElementById('backBtn');
+    if (chatPanel) chatPanel.classList.add('open');
+    if (backBtn) backBtn.style.display = 'flex';
+    closeConversations();
+};
+window.closeChat = function() {
+    const chatPanel = document.getElementById('chatPanel');
+    const backBtn = document.getElementById('backBtn');
+    if (chatPanel) chatPanel.classList.remove('open');
+    if (backBtn && !document.querySelector('.panel.open')) backBtn.style.display = 'none';
+    currentChatUserId = null;
+};
+
+async function loadPrivateMessages(otherUserId) {
+    const container = document.getElementById('chatMessages');
+    if (!container) return;
+    container.innerHTML = '<div class="text-center text-gray-500 py-10">⏳ جاري التحميل...</div>';
+    const chatId = getChatId(currentUser.uid, otherUserId);
+    const messagesSnap = await get(child(ref(db), `private_messages/${chatId}`));
+    const messages = messagesSnap.val() || {};
+    container.innerHTML = '';
+    const sorted = Object.entries(messages).sort((a,b)=>a[1].timestamp-b[1].timestamp);
+    for (const [id, msg] of sorted) {
+        const isSent = msg.senderId === currentUser.uid;
+        const time = new Date(msg.timestamp).toLocaleTimeString();
+        let content = '';
+        if (msg.type === 'text') content = `<div class="message-bubble ${isSent ? 'sent' : 'received'}">${escapeHtml(msg.text)}</div>`;
+        else if (msg.type === 'image') content = `<img src="${msg.imageUrl}" class="message-image" onclick="window.open('${msg.imageUrl}')">`;
+        else if (msg.type === 'audio') content = `<div class="message-audio"><audio controls src="${msg.audioUrl}"></audio></div>`;
+        container.innerHTML += `<div class="chat-message ${isSent ? 'sent' : 'received'}"><div>${content}<div class="text-[10px] opacity-50 mt-1">${time}</div></div></div>`;
+    }
+    if (container.innerHTML === '') container.innerHTML = '<div class="text-center text-gray-500 py-10">💬 لا توجد رسائل بعد</div>';
+    container.scrollTop = container.scrollHeight;
+}
+
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+window.sendChatMessage = async function() {
+    const input = document.getElementById('chatMessageInput');
+    const text = input?.value.trim();
+    if (!text || !currentChatUserId) return;
+    const chatId = getChatId(currentUser.uid, currentChatUserId);
+    await push(ref(db, `private_messages/${chatId}`), { senderId: currentUser.uid, senderName: currentUserData?.name, text, type: 'text', timestamp: Date.now() });
+    await set(ref(db, `private_chats/${currentUser.uid}/${currentChatUserId}`), { lastMessage: text, lastTimestamp: Date.now(), withUser: currentChatUserId });
+    await set(ref(db, `private_chats/${currentChatUserId}/${currentUser.uid}`), { lastMessage: text, lastTimestamp: Date.now(), withUser: currentUser.uid });
+    if (input) input.value = '';
+    await loadPrivateMessages(currentChatUserId);
+};
+
+window.sendChatImage = async function(input) {
+    const file = input.files[0];
+    if (!file || !currentChatUserId) return;
+    const result = await uploadMedia(file);
+    const chatId = getChatId(currentUser.uid, currentChatUserId);
+    await push(ref(db, `private_messages/${chatId}`), { senderId: currentUser.uid, senderName: currentUserData?.name, imageUrl: result.url, type: 'image', timestamp: Date.now() });
+    await set(ref(db, `private_chats/${currentUser.uid}/${currentChatUserId}`), { lastMessage: '📷 صورة', lastTimestamp: Date.now(), withUser: currentChatUserId });
+    await set(ref(db, `private_chats/${currentChatUserId}/${currentUser.uid}`), { lastMessage: '📷 صورة', lastTimestamp: Date.now(), withUser: currentUser.uid });
+    input.value = '';
+    await loadPrivateMessages(currentChatUserId);
+};
+
+window.startRecordingChat = async function() {
+    const btn = document.getElementById('chatRecordBtn');
+    if (mediaRecorder && mediaRecorder.state === 'recording') {
+        mediaRecorder.stop();
+        if (btn) btn.innerHTML = '<i class="fas fa-microphone"></i>';
+        return;
+    }
+    try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        mediaRecorder = new MediaRecorder(stream);
+        audioChunks = [];
+        mediaRecorder.ondataavailable = (event) => { audioChunks.push(event.data); };
+        mediaRecorder.onstop = async () => {
+            const audioBlob = new Blob(audioChunks, { type: 'audio/mp3' });
+            const audioFile = new File([audioBlob], 'recording.mp3', { type: 'audio/mp3' });
+            const result = await uploadMedia(audioFile);
+            if (currentChatUserId) {
+                const chatId = getChatId(currentUser.uid, currentChatUserId);
+                await push(ref(db, `private_messages/${chatId}`), { senderId: currentUser.uid, senderName: currentUserData?.name, audioUrl: result.url, type: 'audio', timestamp: Date.now() });
+                await set(ref(db, `private_chats/${currentUser.uid}/${currentChatUserId}`), { lastMessage: '🎤 رسالة صوتية', lastTimestamp: Date.now(), withUser: currentChatUserId });
+                await set(ref(db, `private_chats/${currentChatUserId}/${currentUser.uid}`), { lastMessage: '🎤 رسالة صوتية', lastTimestamp: Date.now(), withUser: currentUser.uid });
+                await loadPrivateMessages(currentChatUserId);
+            }
+            stream.getTracks().forEach(track => track.stop());
+        };
+        mediaRecorder.start();
+        if (btn) btn.innerHTML = '<i class="fas fa-stop-circle text-red-500"></i>';
+    } catch (err) { showToast('❌ لا يمكن الوصول إلى الميكروفون'); }
+};
+
+// ========== القصص ==========
+onValue(ref(db, 'stories'), (s) => {
+    const data = s.val();
+    const now = Date.now();
+    const activeStories = [];
+    if (data) {
+        Object.keys(data).forEach(key => {
+            const story = data[key];
+            if (story.timestamp && (now - story.timestamp) < 24*60*60*1000) activeStories.push({ id: key, ...story });
+        });
+    }
+    renderStories(activeStories);
+});
+
+function renderStories(stories) {
+    const container = document.getElementById('storiesList');
+    if (!container) return;
+    container.innerHTML = `<div class="story-card" onclick="addStory()"><div class="add-story-btn"><i class="fas fa-plus"></i></div><div class="story-name">أضف قصة</div></div>`;
+    stories.forEach(story => {
+        const user = allUsers[story.sender] || { name: 'مستخدم', avatarUrl: '' };
+        container.innerHTML += `
+            <div class="story-card" onclick="viewStory('${story.mediaUrl}')">
+                <div class="story-ring"><img class="story-avatar" src="${user.avatarUrl || 'https://via.placeholder.com/80'}"></div>
+                <div class="story-name">${user.name}</div>
+            </div>
+        `;
+    });
+}
+
+window.viewStory = function(mediaUrl) {
+    window.open(mediaUrl, '_blank');
+};
+
+window.openStories = function() {
+    const panel = document.getElementById('storiesPanel');
+    const backBtn = document.getElementById('backBtn');
+    if (panel) panel.classList.add('open');
+    if (backBtn) backBtn.style.display = 'flex';
+};
+window.closeStories = function() {
+    const panel = document.getElementById('storiesPanel');
+    const backBtn = document.getElementById('backBtn');
+    if (panel) panel.classList.remove('open');
+    if (backBtn && !document.querySelector('.panel.open')) backBtn.style.display = 'none';
+};
+window.addStory = async function() {
     const input = document.createElement('input');
     input.type = 'file';
     input.accept = 'image/*,video/*';
     input.onchange = async (e) => {
-      const file = e.target.files[0];
-      if (!file) return;
-      const caption = prompt('أضف وصفاً (اختياري)') || '';
-      const storageRef = storage.ref(`posts/${currentUser.uid}/${Date.now()}_${file.name}`);
-      const uploadTask = storageRef.put(file);
-      uploadTask.on('state_changed', null, null, async () => {
-        const url = await storageRef.getDownloadURL();
-        const type = file.type.startsWith('video') ? 'video' : 'image';
-        await db.ref('posts').push({
-          userId: currentUser.uid,
-          username: currentUser.displayName || currentUser.email,
-          userPhoto: currentUser.photoURL || '',
-          mediaUrl: url,
-          type: type,
-          caption: caption,
-          likes: {},
-          comments: {},
-          createdAt: Date.now()
-        });
-        showToast('تم النشر بنجاح', 'success');
-        currentView = 'home';
-        renderMainApp();
-      });
+        const file = e.target.files[0];
+        if (!file) return;
+        const result = await uploadMedia(file);
+        await push(ref(db, 'stories'), { mediaUrl: result.url, mediaType: result.type, sender: currentUser.uid, timestamp: Date.now() });
+        showToast('✅ تم إضافة القصة');
     };
     input.click();
-  });
-  document.getElementById('post-audio').addEventListener('click', async () => {
-    modal.remove();
-    await startVoiceRecording((audioBlob) => {
-      const caption = prompt('أضف وصفاً (اختياري)') || '';
-      const storageRef = storage.ref(`posts/${currentUser.uid}/audio_${Date.now()}.webm`);
-      storageRef.put(audioBlob).then(async (snapshot) => {
-        const url = await snapshot.ref.getDownloadURL();
-        await db.ref('posts').push({
-          userId: currentUser.uid,
-          username: currentUser.displayName || currentUser.email,
-          userPhoto: currentUser.photoURL || '',
-          mediaUrl: url,
-          type: 'audio',
-          caption: caption,
-          likes: {},
-          comments: {},
-          createdAt: Date.now()
-        });
-        showToast('تم نشر التسجيل الصوتي', 'success');
-        currentView = 'home';
-        renderMainApp();
-      });
-    });
-  });
-  document.getElementById('close-modal').addEventListener('click', () => modal.remove());
-}
+};
 
-// ======================== VOICE RECORDING HELPER ========================
-async function startVoiceRecording(onStop) {
-  const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-  const mediaRecorder = new MediaRecorder(stream);
-  const chunks = [];
-  mediaRecorder.ondataavailable = (e) => chunks.push(e.data);
-  mediaRecorder.onstop = () => {
-    const blob = new Blob(chunks, { type: 'audio/webm' });
-    stream.getTracks().forEach(track => track.stop());
-    onStop(blob);
-  };
-  mediaRecorder.start();
-  // Show recording UI with stop button
-  const recordingUI = document.createElement('div');
-  recordingUI.className = 'recording-ui';
-  recordingUI.innerHTML = `
-    <div class="recording-box">
-      <i class="fas fa-microphone-alt fa-2x pulse"></i>
-      <span>جاري التسجيل...</span>
-      <button id="stop-recording">إيقاف</button>
-    </div>
-  `;
-  document.body.appendChild(recordingUI);
-  document.getElementById('stop-recording').addEventListener('click', () => {
-    mediaRecorder.stop();
-    recordingUI.remove();
-  });
-}
+// ========== البحث ==========
+window.openSearch = function() {
+    const panel = document.getElementById('searchPanel');
+    const backBtn = document.getElementById('backBtn');
+    if (panel) panel.classList.add('open');
+    if (backBtn) backBtn.style.display = 'flex';
+};
+window.closeSearch = function() {
+    const panel = document.getElementById('searchPanel');
+    const backBtn = document.getElementById('backBtn');
+    if (panel) panel.classList.remove('open');
+    if (backBtn && !document.querySelector('.panel.open')) backBtn.style.display = 'none';
+};
+window.searchAll = function() {
+    const input = document.getElementById('searchInput');
+    const query = input?.value.toLowerCase() || '';
+    const resultsDiv = document.getElementById('searchResults');
+    if (!resultsDiv) return;
+    if (!query) { resultsDiv.innerHTML = ''; return; }
+    const users = Object.values(allUsers).filter(u => u.name?.toLowerCase().includes(query));
+    resultsDiv.innerHTML = users.map(u => `<div class="search-result" onclick="viewProfile('${u.uid}')"><div class="w-10 h-10 rounded-full bg-pink-500 flex items-center justify-center overflow-hidden">${u.avatarUrl ? `<img src="${u.avatarUrl}">` : (u.name?.charAt(0) || 'U')}</div><div><div class="font-bold">${u.name}</div><div class="text-sm text-gray-500">@${u.name?.toLowerCase().replace(/\s/g, '')}</div></div></div>`).join('');
+    if (users.length === 0) resultsDiv.innerHTML = '<div class="text-center text-gray-500 py-10">🔍 لا توجد نتائج</div>';
+};
 
-// ======================== PROFILE (with full editing, privacy, etc.) ========================
-async function loadProfile(container, userId) {
-  container.innerHTML = '<div class="loading-spinner"><i class="fas fa-spinner fa-pulse"></i></div>';
-  const userSnap = await db.ref(`users/${userId}`).once('value');
-  const user = userSnap.val();
-  if (!user) return;
-  const isOwn = userId === currentUser.uid;
-  const isFollowing = !isOwn && currentUser.following && currentUser.following[userId];
-  const postsSnap = await db.ref('posts').orderByChild('userId').equalTo(userId).once('value');
-  const posts = [];
-  postsSnap.forEach(child => posts.push({ id: child.key, ...child.val() }));
-
-  container.innerHTML = `
-    <div class="profile-header">
-      <div class="profile-avatar-wrapper">
-        <img class="profile-avatar" src="${user.photoURL || 'https://ui-avatars.com/api/?background=0095f6&color=fff&name=' + (user.username || 'U')}" alt="avatar">
-        ${isOwn ? `<button id="change-avatar-btn"><i class="fas fa-camera"></i></button>` : ''}
-      </div>
-      <h2>${user.username}</h2>
-      <p class="full-name">${user.fullName || ''}</p>
-      <p class="bio">${user.bio || '✨ مرحباً بك في حسابي'}</p>
-      ${user.website ? `<a href="${user.website}" target="_blank" class="website">${user.website}</a>` : ''}
-      <div class="stats">
-        <div><span>${Object.keys(user.followers || {}).length}</span> متابع</div>
-        <div><span>${Object.keys(user.following || {}).length}</span> متابع</div>
-        <div><span>${posts.length}</span> منشور</div>
-      </div>
-      ${isOwn ? `
-        <button id="edit-profile-btn"><i class="fas fa-edit"></i> تعديل الملف الشخصي</button>
-        <button id="privacy-settings-btn"><i class="fas fa-lock"></i> الخصوصية</button>
-      ` : `
-        <button id="follow-btn" class="${isFollowing ? 'following' : ''}">${isFollowing ? 'متابَع' : 'متابعة'}</button>
-        <button id="message-btn"><i class="fas fa-comment-dots"></i> رسالة</button>
-      `}
-    </div>
-    <div class="profile-tabs">
-      <button class="tab-btn active" data-tab="posts">المنشورات</button>
-      <button class="tab-btn" data-tab="saved">المحفوظات</button>
-      <button class="tab-btn" data-tab="liked">الإعجابات</button>
-    </div>
-    <div class="profile-posts" id="profile-posts">
-      ${renderProfilePosts(posts)}
-    </div>
-  `;
-
-  // Event handlers
-  if (isOwn) {
-    document.getElementById('edit-profile-btn')?.addEventListener('click', showEditProfileModal);
-    document.getElementById('privacy-settings-btn')?.addEventListener('click', showPrivacySettings);
-    document.getElementById('change-avatar-btn')?.addEventListener('click', changeAvatar);
-  } else {
-    document.getElementById('follow-btn')?.addEventListener('click', () => toggleFollow(userId));
-    document.getElementById('message-btn')?.addEventListener('click', () => {
-      currentView = 'messages';
-      currentChatUserId = userId;
-      renderMainApp();
-    });
-  }
-  // Tabs
-  document.querySelectorAll('.tab-btn').forEach(btn => {
-    btn.addEventListener('click', async () => {
-      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-      const tab = btn.dataset.tab;
-      if (tab === 'posts') {
-        document.getElementById('profile-posts').innerHTML = renderProfilePosts(posts);
-      } else if (tab === 'saved') {
-        const savedSnap = await db.ref(`users/${userId}/savedPosts`).once('value');
-        const savedPosts = [];
-        savedSnap.forEach(child => savedPosts.push(child.val()));
-        document.getElementById('profile-posts').innerHTML = renderProfilePosts(savedPosts);
-      } else if (tab === 'liked') {
-        const likedSnap = await db.ref(`posts`).once('value');
-        const likedPosts = [];
-        likedSnap.forEach(child => {
-          const post = child.val();
-          if (post.likes && post.likes[currentUser.uid]) {
-            likedPosts.push({ id: child.key, ...post });
-          }
-        });
-        document.getElementById('profile-posts').innerHTML = renderProfilePosts(likedPosts);
-      }
-    });
-  });
-}
-
-function renderProfilePosts(posts) {
-  if (!posts.length) return '<div class="empty-state">لا توجد منشورات</div>';
-  return `<div class="profile-posts-grid">
-    ${posts.map(post => `
-      <div class="profile-post">
-        ${post.type === 'video' ? `<video src="${post.mediaUrl}"></video>` : 
-          post.type === 'audio' ? `<audio controls src="${post.mediaUrl}"></audio>` : 
-          `<img src="${post.mediaUrl}" alt="post">`}
-      </div>
-    `).join('')}
-  </div>`;
-}
-
-async function changeAvatar() {
-  const input = document.createElement('input');
-  input.type = 'file';
-  input.accept = 'image/*';
-  input.onchange = async (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    const storageRef = storage.ref(`avatars/${currentUser.uid}`);
-    await storageRef.put(file);
-    const url = await storageRef.getDownloadURL();
-    await db.ref(`users/${currentUser.uid}/photoURL`).set(url);
-    await currentUser.updateProfile({ photoURL: url });
-    showToast('تم تحديث الصورة', 'success');
-    loadViewContent();
-  };
-  input.click();
-}
-
-function showEditProfileModal() {
-  const userRef = db.ref(`users/${currentUser.uid}`);
-  userRef.once('value').then(snap => {
-    const user = snap.val();
-    const modal = document.createElement('div');
-    modal.className = 'modal-overlay';
-    modal.innerHTML = `
-      <div class="modal-content">
-        <h3>تعديل الملف الشخصي</h3>
-        <input id="edit-username" placeholder="اسم المستخدم" value="${user.username || ''}">
-        <input id="edit-fullname" placeholder="الاسم الكامل" value="${user.fullName || ''}">
-        <textarea id="edit-bio" placeholder="السيرة الذاتية">${user.bio || ''}</textarea>
-        <input id="edit-website" placeholder="الموقع الشخصي" value="${user.website || ''}">
-        <button id="save-profile">حفظ</button>
-        <button id="close-modal">إلغاء</button>
-      </div>
-    `;
-    document.body.appendChild(modal);
-    document.getElementById('save-profile').addEventListener('click', async () => {
-      const updates = {
-        username: document.getElementById('edit-username').value,
-        fullName: document.getElementById('edit-fullname').value,
-        bio: document.getElementById('edit-bio').value,
-        website: document.getElementById('edit-website').value
-      };
-      await userRef.update(updates);
-      showToast('تم تحديث الملف الشخصي', 'success');
-      modal.remove();
-      loadViewContent();
-    });
-    document.getElementById('close-modal').addEventListener('click', () => modal.remove());
-  });
-}
-
-function showPrivacySettings() {
-  const userRef = db.ref(`users/${currentUser.uid}`);
-  userRef.once('value').then(snap => {
-    const user = snap.val();
-    const modal = document.createElement('div');
-    modal.className = 'modal-overlay';
-    modal.innerHTML = `
-      <div class="modal-content">
-        <h3>إعدادات الخصوصية</h3>
-        <label>
-          <input type="checkbox" id="private-account" ${user.private ? 'checked' : ''}>
-          حساب خاص (لا يظهر للمتابعين الجدد)
-        </label>
-        <button id="save-privacy">حفظ</button>
-        <button id="close-modal">إلغاء</button>
-      </div>
-    `;
-    document.body.appendChild(modal);
-    document.getElementById('save-privacy').addEventListener('click', async () => {
-      const isPrivate = document.getElementById('private-account').checked;
-      await userRef.update({ private: isPrivate });
-      showToast('تم تحديث إعدادات الخصوصية', 'success');
-      modal.remove();
-    });
-    document.getElementById('close-modal').addEventListener('click', () => modal.remove());
-  });
-}
-
-async function toggleFollow(targetId) {
-  const followingRef = db.ref(`users/${currentUser.uid}/following/${targetId}`);
-  const followerRef = db.ref(`users/${targetId}/followers/${currentUser.uid}`);
-  const snap = await followingRef.once('value');
-  if (snap.exists()) {
-    await followingRef.remove();
-    await followerRef.remove();
-  } else {
-    await followingRef.set(true);
-    await followerRef.set(true);
-    await db.ref(`notifications/${targetId}`).push({
-      type: 'follow',
-      fromUserId: currentUser.uid,
-      fromUsername: currentUser.displayName || currentUser.email,
-      createdAt: Date.now(),
-      read: false
-    });
-  }
-  loadViewContent();
-}
-
-// ======================== NOTIFICATIONS ========================
-async function loadNotifications(container) {
-  container.innerHTML = '<div class="loading-spinner"><i class="fas fa-spinner fa-pulse"></i></div>';
-  const snapshot = await db.ref(`notifications/${currentUser.uid}`).once('value');
-  const notifs = [];
-  snapshot.forEach(child => notifs.push({ id: child.key, ...child.val() }));
-  notifs.sort((a,b) => b.createdAt - a.createdAt);
-  if (!notifs.length) {
-    container.innerHTML = '<div class="empty-state"><i class="fas fa-bell-slash"></i> لا توجد إشعارات</div>';
-    return;
-  }
-  container.innerHTML = notifs.map(n => `
-    <div class="notification-item">
-      <i class="fas ${n.type === 'like' ? 'fa-heart' : n.type === 'comment' ? 'fa-comment' : 'fa-user-plus'}"></i>
-      <div><strong>${n.fromUsername}</strong> ${n.type === 'like' ? 'أعجب بمنشورك' : n.type === 'comment' ? 'علق على منشورك' : 'تابعك'}</div>
-      <small>${timeAgo(n.createdAt)}</small>
-    </div>
-  `).join('');
-}
-
-// ======================== STORIES ========================
-async function loadStories() {
-  const storiesBar = document.getElementById('stories-bar');
-  if (!storiesBar) return;
-  const snapshot = await db.ref('stories').once('value');
-  const now = Date.now();
-  const stories = [];
-  snapshot.forEach(child => {
-    const s = child.val();
-    if (s.expiresAt > now) stories.push({ id: child.key, ...s });
-    else child.ref.remove();
-  });
-  const userStories = {};
-  stories.forEach(s => {
-    if (!userStories[s.userId]) userStories[s.userId] = [];
-    userStories[s.userId].push(s);
-  });
-  let html = `<div class="story-circle add-story" id="add-story"><i class="fas fa-plus"></i></div>`;
-  for (let uid in userStories) {
-    const first = userStories[uid][0];
-    html += `<div class="story-circle" data-user="${uid}"><img src="${first.userPhoto || 'https://ui-avatars.com/api/?background=0095f6&color=fff&name=S'}" alt="story"></div>`;
-  }
-  storiesBar.innerHTML = html;
-  document.querySelectorAll('.story-circle[data-user]').forEach(el => {
-    el.addEventListener('click', () => showStoryViewer(el.dataset.user, userStories[el.dataset.user]));
-  });
-  document.getElementById('add-story')?.addEventListener('click', showAddStoryModal);
-}
-
-async function showAddStoryModal() {
-  const input = document.createElement('input');
-  input.type = 'file';
-  input.accept = 'image/*,video/*';
-  input.onchange = async (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    const storageRef = storage.ref(`stories/${currentUser.uid}/${Date.now()}_${file.name}`);
-    const uploadTask = storageRef.put(file);
-    uploadTask.on('state_changed', null, null, async () => {
-      const url = await storageRef.getDownloadURL();
-      const type = file.type.startsWith('video') ? 'video' : 'image';
-      await db.ref(`stories/${db.ref().push().key}`).set({
-        userId: currentUser.uid,
-        userPhoto: currentUser.photoURL || '',
-        mediaUrl: url,
-        type: type,
-        createdAt: Date.now(),
-        expiresAt: Date.now() + 24 * 60 * 60 * 1000
-      });
-      showToast('تم إضافة القصة', 'success');
-      loadStories();
-    });
-  };
-  input.click();
-}
-
-function showStoryViewer(userId, stories) {
-  let idx = 0;
-  const modal = document.createElement('div');
-  modal.className = 'story-modal';
-  const show = (i) => {
-    const story = stories[i];
-    modal.innerHTML = `
-      <div class="story-content">
-        ${story.type === 'video' ? `<video controls src="${story.mediaUrl}"></video>` : `<img src="${story.mediaUrl}" alt="story">`}
-        <button class="close-story">&times;</button>
-        <div class="story-progress"></div>
-      </div>
-    `;
-    document.body.appendChild(modal);
-    modal.querySelector('.close-story').addEventListener('click', () => modal.remove());
-  };
-  show(0);
-}
-
-// ======================== DIRECT MESSAGES ========================
-async function loadMessagesView(container) {
-  if (currentChatUserId) {
-    // Show chat window
-    await loadChatRoom(container, currentChatUserId);
-  } else {
-    // Show list of conversations
-    await loadConversationsList(container);
-  }
-}
-
-async function loadConversationsList(container) {
-  container.innerHTML = '<div class="loading-spinner"><i class="fas fa-spinner fa-pulse"></i> جاري التحميل...</div>';
-  // Get all users the current user has chatted with
-  const userChatsRef = db.ref(`chats/${currentUser.uid}`);
-  const snapshot = await userChatsRef.once('value');
-  const chats = [];
-  snapshot.forEach(child => {
-    chats.push({ userId: child.key, lastMessage: child.val().lastMessage, timestamp: child.val().timestamp });
-  });
-  chats.sort((a,b) => b.timestamp - a.timestamp);
-
-  if (!chats.length) {
-    container.innerHTML = `
-      <div class="empty-state">
-        <i class="fas fa-comments"></i>
-        <p>لا توجد محادثات بعد</p>
-        <button id="search-users-btn">ابحث عن مستخدمين</button>
-      </div>
-    `;
-    document.getElementById('search-users-btn')?.addEventListener('click', showUserSearch);
-    return;
-  }
-
-  // Build list of conversations
-  let html = `<div class="conversations-header"><button id="new-message-btn"><i class="fas fa-plus"></i> رسالة جديدة</button></div><div class="conversations-list">`;
-  for (let chat of chats) {
-    const userSnap = await db.ref(`users/${chat.userId}`).once('value');
-    const user = userSnap.val();
-    html += `
-      <div class="conversation-item" data-user-id="${chat.userId}">
-        <img class="avatar" src="${user?.photoURL || 'https://ui-avatars.com/api/?background=0095f6&color=fff&name=' + (user?.username || 'U')}" alt="avatar">
-        <div class="conv-info">
-          <span class="username">${user?.username || 'مستخدم'}</span>
-          <span class="last-message">${chat.lastMessage?.substring(0, 40) || ''}</span>
-        </div>
-        <span class="time">${timeAgo(chat.timestamp)}</span>
-      </div>
-    `;
-  }
-  html += `</div>`;
-  container.innerHTML = html;
-
-  document.getElementById('new-message-btn')?.addEventListener('click', showUserSearch);
-  document.querySelectorAll('.conversation-item').forEach(el => {
-    el.addEventListener('click', () => {
-      currentChatUserId = el.dataset.userId;
-      loadMessagesView(container);
-    });
-  });
-}
-
-function showUserSearch() {
-  const modal = document.createElement('div');
-  modal.className = 'modal-overlay';
-  modal.innerHTML = `
-    <div class="modal-content">
-      <h3>ابحث عن مستخدم</h3>
-      <input type="text" id="search-users-input" placeholder="اسم المستخدم أو البريد">
-      <div id="search-results"></div>
-      <button id="close-modal">إلغاء</button>
-    </div>
-  `;
-  document.body.appendChild(modal);
-  const input = document.getElementById('search-users-input');
-  const resultsDiv = document.getElementById('search-results');
-  input.addEventListener('input', async () => {
-    const query = input.value.trim().toLowerCase();
-    if (query.length < 2) {
-      resultsDiv.innerHTML = '';
-      return;
+// ========== لوحة الأدمن ==========
+window.openAdmin = async function() {
+    if (!isAdmin) return;
+    const statsDiv = document.getElementById('adminStats');
+    const usersListDiv = document.getElementById('adminUsersList');
+    const postsListDiv = document.getElementById('adminPostsList');
+    if (statsDiv) {
+        statsDiv.innerHTML = `
+            <div class="admin-stat"><div class="text-xl font-bold">${Object.keys(allUsers).length}</div><div>👥 مستخدمين</div></div>
+            <div class="admin-stat"><div class="text-xl font-bold">${allPosts.length}</div><div>📝 منشورات</div></div>
+            <div class="admin-stat"><div class="text-xl font-bold">${allPosts.reduce((s,p)=>s+(p.likes||0),0)}</div><div>❤️ إعجابات</div></div>
+        `;
     }
-    const usersSnap = await db.ref('users').once('value');
-    const users = [];
-    usersSnap.forEach(child => {
-      const user = child.val();
-      if (user.username.toLowerCase().includes(query) && child.key !== currentUser.uid) {
-        users.push({ id: child.key, ...user });
-      }
-    });
-    resultsDiv.innerHTML = users.map(user => `
-      <div class="search-result" data-id="${user.id}">
-        <img src="${user.photoURL || 'https://ui-avatars.com/api/?background=0095f6&color=fff&name=' + (user.username)}" alt="avatar">
-        <span>${user.username}</span>
-      </div>
-    `).join('');
-    document.querySelectorAll('.search-result').forEach(el => {
-      el.addEventListener('click', () => {
-        currentChatUserId = el.dataset.id;
-        modal.remove();
-        loadMessagesView(document.getElementById('content'));
-      });
-    });
-  });
-  document.getElementById('close-modal').addEventListener('click', () => modal.remove());
-}
-
-async function loadChatRoom(container, otherUserId) {
-  container.innerHTML = `
-    <div class="chat-header">
-      <button id="back-to-conversations"><i class="fas fa-arrow-right"></i></button>
-      <div class="chat-user-info"></div>
-    </div>
-    <div class="messages-container" id="messages-container"></div>
-    <div class="chat-input-area">
-      <input type="text" id="chat-message-input" placeholder="اكتب رسالة...">
-      <button id="send-text-btn"><i class="fas fa-paper-plane"></i></button>
-      <button id="attach-image-btn"><i class="fas fa-image"></i></button>
-      <button id="attach-video-btn"><i class="fas fa-video"></i></button>
-      <button id="voice-record-btn"><i class="fas fa-microphone"></i></button>
-    </div>
-  `;
-
-  // Load user info
-  const otherUserSnap = await db.ref(`users/${otherUserId}`).once('value');
-  const otherUser = otherUserSnap.val();
-  document.querySelector('.chat-user-info').innerHTML = `
-    <img src="${otherUser?.photoURL || 'https://ui-avatars.com/api/?background=0095f6&color=fff&name=' + (otherUser?.username || 'U')}" alt="avatar">
-    <span>${otherUser?.username || 'مستخدم'}</span>
-  `;
-
-  // Back button
-  document.getElementById('back-to-conversations').addEventListener('click', () => {
-    if (messageListener) messageListener.off();
-    currentChatUserId = null;
-    loadMessagesView(container);
-  });
-
-  // Message sending
-  const roomId = getRoomId(currentUser.uid, otherUserId);
-  const messagesRef = db.ref(`messages/${roomId}`);
-  // Listen for new messages
-  if (messageListener) messageListener.off();
-  messageListener = messagesRef.on('child_added', (snapshot) => {
-    const msg = snapshot.val();
-    appendMessage(msg);
-  });
-  // Load existing messages
-  const snapshot = await messagesRef.once('value');
-  const messages = [];
-  snapshot.forEach(child => messages.push({ id: child.key, ...child.val() }));
-  messages.sort((a,b) => a.timestamp - b.timestamp);
-  const messagesContainer = document.getElementById('messages-container');
-  messagesContainer.innerHTML = '';
-  messages.forEach(msg => appendMessage(msg));
-
-  // Send text message
-  document.getElementById('send-text-btn').addEventListener('click', async () => {
-    const text = document.getElementById('chat-message-input').value.trim();
-    if (text) {
-      await sendMessage(roomId, 'text', null, text);
-      document.getElementById('chat-message-input').value = '';
-    }
-  });
-  document.getElementById('chat-message-input').addEventListener('keypress', (e) => {
-    if (e.key === 'Enter') document.getElementById('send-text-btn').click();
-  });
-
-  // Attach media
-  document.getElementById('attach-image-btn').addEventListener('click', () => attachMedia('image'));
-  document.getElementById('attach-video-btn').addEventListener('click', () => attachMedia('video'));
-  document.getElementById('voice-record-btn').addEventListener('click', async () => {
-    await startVoiceRecording(async (blob) => {
-      const storageRef = storage.ref(`messages/${roomId}/audio_${Date.now()}.webm`);
-      await storageRef.put(blob);
-      const url = await storageRef.getDownloadURL();
-      await sendMessage(roomId, 'audio', url);
-    });
-  });
-}
-
-function getRoomId(uid1, uid2) {
-  return uid1 < uid2 ? `${uid1}_${uid2}` : `${uid2}_${uid1}`;
-}
-
-async function sendMessage(roomId, type, mediaUrl, text = '') {
-  const message = {
-    senderId: currentUser.uid,
-    type: type,
-    content: text,
-    mediaUrl: mediaUrl,
-    timestamp: Date.now(),
-    read: false
-  };
-  const newMsgRef = db.ref(`messages/${roomId}`).push();
-  await newMsgRef.set(message);
-  // Update last message in chats
-  const chatRef = db.ref(`chats/${currentUser.uid}/${getOtherUserId(roomId)}`);
-  await chatRef.set({
-    lastMessage: text || (type === 'audio' ? '🎤 تسجيل صوتي' : 'وسائط'),
-    timestamp: Date.now()
-  });
-  const otherChatRef = db.ref(`chats/${getOtherUserId(roomId)}/${currentUser.uid}`);
-  await otherChatRef.set({
-    lastMessage: text || (type === 'audio' ? '🎤 تسجيل صوتي' : 'وسائط'),
-    timestamp: Date.now()
-  });
-  // Scroll to bottom
-  const container = document.getElementById('messages-container');
-  container.scrollTop = container.scrollHeight;
-}
-
-function getOtherUserId(roomId) {
-  const parts = roomId.split('_');
-  return parts[0] === currentUser.uid ? parts[1] : parts[0];
-}
-
-function appendMessage(msg) {
-  const container = document.getElementById('messages-container');
-  if (!container) return;
-  const isOwn = msg.senderId === currentUser.uid;
-  const div = document.createElement('div');
-  div.className = `message ${isOwn ? 'own' : 'other'}`;
-  if (msg.type === 'text') {
-    div.innerHTML = `<div class="message-text">${msg.content}</div><div class="message-time">${formatDate(msg.timestamp)}</div>`;
-  } else if (msg.type === 'image') {
-    div.innerHTML = `<img src="${msg.mediaUrl}" class="message-media"><div class="message-time">${formatDate(msg.timestamp)}</div>`;
-  } else if (msg.type === 'video') {
-    div.innerHTML = `<video controls src="${msg.mediaUrl}" class="message-media"></video><div class="message-time">${formatDate(msg.timestamp)}</div>`;
-  } else if (msg.type === 'audio') {
-    div.innerHTML = `<audio controls src="${msg.mediaUrl}" class="message-media"></audio><div class="message-time">${formatDate(msg.timestamp)}</div>`;
-  }
-  container.appendChild(div);
-  container.scrollTop = container.scrollHeight;
-}
-
-async function attachMedia(type) {
-  const input = document.createElement('input');
-  input.type = 'file';
-  input.accept = type === 'image' ? 'image/*' : 'video/*';
-  input.onchange = async (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    const roomId = getRoomId(currentUser.uid, currentChatUserId);
-    const storageRef = storage.ref(`messages/${roomId}/${type}_${Date.now()}_${file.name}`);
-    await storageRef.put(file);
-    const url = await storageRef.getDownloadURL();
-    await sendMessage(roomId, type, url);
-  };
-  input.click();
-}
-
-// ======================== ADMIN DASHBOARD ========================
-async function loadAdminDashboard(container) {
-  container.innerHTML = '<div class="loading-spinner"><i class="fas fa-spinner fa-pulse"></i> تحميل لوحة التحكم...</div>';
-  const postsSnap = await db.ref('posts').once('value');
-  const usersSnap = await db.ref('users').once('value');
-  const posts = [];
-  postsSnap.forEach(child => posts.push({ id: child.key, ...child.val() }));
-  const users = [];
-  usersSnap.forEach(child => users.push({ id: child.key, ...child.val() }));
-
-  container.innerHTML = `
-    <h2 class="admin-title"><i class="fas fa-shield-alt"></i> لوحة تحكم المشرف</h2>
-    <div class="admin-stats">
-      <div>عدد المستخدمين: ${users.length}</div>
-      <div>عدد المنشورات: ${posts.length}</div>
-    </div>
-    <div class="admin-tabs">
-      <button class="admin-tab active" data-tab="posts">المنشورات</button>
-      <button class="admin-tab" data-tab="users">المستخدمين</button>
-    </div>
-    <div id="admin-content"></div>
-  `;
-
-  const showTab = (tab) => {
-    const adminContent = document.getElementById('admin-content');
-    if (tab === 'posts') {
-      adminContent.innerHTML = `
-        <div class="admin-list">
-          ${posts.map(post => `
-            <div class="admin-item">
-              <div class="admin-info">
-                <strong>${post.username}</strong>
-                <small>${post.caption?.substring(0, 50) || ''}</small>
-              </div>
-              <button class="admin-delete" data-id="${post.id}"><i class="fas fa-trash-alt"></i> حذف</button>
-            </div>
-          `).join('')}
-        </div>
-      `;
-      document.querySelectorAll('.admin-delete').forEach(btn => {
-        btn.addEventListener('click', async () => {
-          if (confirm('حذف هذا المنشور نهائياً؟')) {
-            await deletePost(btn.dataset.id);
-            loadAdminDashboard(container);
-          }
+    if (usersListDiv) {
+        usersListDiv.innerHTML = '<h4 class="font-bold mt-4">👥 إدارة المستخدمين</h4>';
+        Object.entries(allUsers).forEach(([uid, u]) => {
+            if (uid !== currentUser.uid) {
+                usersListDiv.innerHTML += `<div class="flex justify-between items-center p-2 border-b"><span>@${u.name}</span><button class="admin-delete-btn" onclick="adminDeleteUser('${uid}')">🗑️ حذف</button></div>`;
+            }
         });
-      });
-    } else if (tab === 'users') {
-      adminContent.innerHTML = `
-        <div class="admin-list">
-          ${users.map(user => `
-            <div class="admin-item">
-              <div class="admin-info">
-                <strong>${user.username}</strong>
-                <small>${user.email}</small>
-              </div>
-              <button class="admin-delete-user" data-id="${user.id}"><i class="fas fa-user-slash"></i> حذف المستخدم</button>
-            </div>
-          `).join('')}
-        </div>
-      `;
-      document.querySelectorAll('.admin-delete-user').forEach(btn => {
-        btn.addEventListener('click', async () => {
-          if (confirm('حذف هذا المستخدم وجميع محتوياته نهائياً؟')) {
-            // Delete user's posts, stories, messages, etc.
-            const uid = btn.dataset.id;
-            // Delete posts
-            const userPosts = await db.ref('posts').orderByChild('userId').equalTo(uid).once('value');
-            userPosts.forEach(async (post) => {
-              await deletePost(post.key);
-            });
-            // Delete user's stories
-            const userStories = await db.ref('stories').orderByChild('userId').equalTo(uid).once('value');
-            userStories.forEach(async (story) => {
-              await story.ref.remove();
-            });
-            // Delete user's profile
-            await db.ref(`users/${uid}`).remove();
-            // Delete user's chats and messages
-            await db.ref(`chats/${uid}`).remove();
-            await db.ref(`messages`).orderByChild('senderId').equalTo(uid).once('value').then(snap => {
-              snap.forEach(msg => msg.ref.remove());
-            });
-            // Delete from auth (requires admin SDK, can't do from client, but we can disable)
-            showToast('تم حذف المستخدم (ملاحظة: يجب حذفه يدوياً من Firebase Auth)', 'success');
-            loadAdminDashboard(container);
-          }
+    }
+    if (postsListDiv) {
+        postsListDiv.innerHTML = '<h4 class="font-bold mt-4">📝 إدارة المنشورات</h4>';
+        allPosts.slice(0, 10).forEach(post => {
+            postsListDiv.innerHTML += `<div class="flex justify-between items-center p-2 border-b"><span>${post.text?.substring(0, 40) || 'منشور'}</span><button class="admin-delete-btn" onclick="adminDeletePost('${post.id}')">🗑️ حذف</button></div>`;
         });
-      });
     }
-  };
+    const adminPanel = document.getElementById('adminPanel');
+    const backBtn = document.getElementById('backBtn');
+    if (adminPanel) adminPanel.classList.add('open');
+    if (backBtn) backBtn.style.display = 'flex';
+};
+window.closeAdmin = function() {
+    const adminPanel = document.getElementById('adminPanel');
+    const backBtn = document.getElementById('backBtn');
+    if (adminPanel) adminPanel.classList.remove('open');
+    if (backBtn && !document.querySelector('.panel.open')) backBtn.style.display = 'none';
+};
+window.adminDeleteUser = async function(userId) {
+    if (!isAdmin || !confirm('⚠️ حذف هذا المستخدم وجميع منشوراته؟')) return;
+    const posts = allPosts.filter(p => p.sender === userId);
+    for (const post of posts) await set(ref(db, `posts/${post.id}`), null);
+    await set(ref(db, `users/${userId}`), null);
+    showToast('✅ تم حذف المستخدم');
+    location.reload();
+};
+window.adminDeletePost = async function(postId) {
+    if (!isAdmin || !confirm('⚠️ حذف هذا المنشور؟')) return;
+    await set(ref(db, `posts/${postId}`), null);
+    showToast('✅ تم حذف المنشور');
+    renderFeed();
+};
 
-  document.querySelectorAll('.admin-tab').forEach(tab => {
-    tab.addEventListener('click', () => {
-      document.querySelectorAll('.admin-tab').forEach(t => t.classList.remove('active'));
-      tab.classList.add('active');
-      showTab(tab.dataset.tab);
-    });
-  });
-  showTab('posts');
-}
-
-// ======================== AUTH LISTENER ========================
-auth.onAuthStateChanged(async (user) => {
-  if (user) {
-    currentUser = user;
-    const userSnap = await db.ref(`users/${user.uid}`).once('value');
-    if (!userSnap.exists()) {
-      await db.ref(`users/${user.uid}`).set({
-        username: user.displayName || user.email.split('@')[0],
-        fullName: user.displayName || '',
-        email: user.email,
-        bio: '',
-        website: '',
-        photoURL: user.photoURL || '',
-        private: false,
-        blocked: {},
-        followers: {},
-        following: {},
-        createdAt: Date.now()
-      });
+// ========== التنقل ==========
+window.switchTab = function(tab) {
+    const navItems = document.querySelectorAll('.nav-item');
+    const activeItem = Array.from(navItems).find(item => item.onclick?.toString().includes(tab));
+    if (activeItem) {
+        navItems.forEach(t => t.classList.remove('active'));
+        activeItem.classList.add('active');
     }
-    renderMainApp();
-  } else {
-    currentUser = null;
-    renderLogin();
-  }
+    if (tab === 'home') {
+        closeCompose(); closeProfile(); closeChat(); closeConversations(); 
+        closeNotifications(); closeSearch(); closeStories(); closeComments(); 
+        closeFollowers(); closeAdmin();
+    }
+};
+window.goToHome = function() { 
+    switchTab('home'); 
+    const backBtn = document.getElementById('backBtn');
+    if (backBtn) backBtn.style.display = 'none'; 
+};
+window.goBack = function() {
+    if (document.getElementById('commentsPanel')?.classList.contains('open')) closeComments();
+    else if (document.getElementById('profilePanel')?.classList.contains('open')) closeProfile();
+    else if (document.getElementById('chatPanel')?.classList.contains('open')) closeChat();
+    else if (document.getElementById('conversationsPanel')?.classList.contains('open')) closeConversations();
+    else if (document.getElementById('notificationsPanel')?.classList.contains('open')) closeNotifications();
+    else if (document.getElementById('searchPanel')?.classList.contains('open')) closeSearch();
+    else if (document.getElementById('storiesPanel')?.classList.contains('open')) closeStories();
+    else if (document.getElementById('followersPanel')?.classList.contains('open')) closeFollowers();
+    else if (document.getElementById('adminPanel')?.classList.contains('open')) closeAdmin();
+    else if (document.getElementById('composePanel')?.classList.contains('open')) closeCompose();
+    else goToHome();
+};
+
+window.toggleTheme = function() {
+    document.body.classList.toggle('light-mode');
+    localStorage.setItem('theme', document.body.classList.contains('light-mode') ? 'light' : 'dark');
+};
+
+// ========== مراقبة المستخدم ==========
+onAuthStateChanged(auth, async (user) => {
+    if (user) {
+        currentUser = user;
+        await loadUserData();
+        isAdmin = ADMIN_EMAILS.includes(currentUser.email);
+        const authScreen = document.getElementById('authScreen');
+        const mainApp = document.getElementById('mainApp');
+        if (authScreen) authScreen.style.display = 'none';
+        if (mainApp) mainApp.style.display = 'block';
+        updateNotificationBadge();
+        if (localStorage.getItem('theme') === 'light') document.body.classList.add('light-mode');
+        showToast(`👋 مرحباً ${currentUserData?.name || 'user'}`);
+    } else {
+        const authScreen = document.getElementById('authScreen');
+        const mainApp = document.getElementById('mainApp');
+        if (authScreen) authScreen.style.display = 'flex';
+        if (mainApp) mainApp.style.display = 'none';
+    }
 });
+
+console.log('✅ UltraSocial Ready - Version 3.0');

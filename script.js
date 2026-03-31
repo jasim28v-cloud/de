@@ -24,68 +24,157 @@ window.login = async () => {
     const email = document.getElementById('loginEmail').value;
     const password = document.getElementById('loginPassword').value;
     const msg = document.getElementById('loginMsg');
-    if (!email || !password) { msg.innerText = 'املأ جميع الحقول'; return; }
+    
+    if (!email || !password) {
+        msg.innerText = '❌ الرجاء ملء جميع الحقول';
+        return;
+    }
+    
+    msg.innerText = '🔄 جاري تسجيل الدخول...';
+    
     try {
-        await signInWithEmailAndPassword(auth, email, password);
+        const userCredential = await signInWithEmailAndPassword(auth, email, password);
+        msg.innerText = '✅ تم تسجيل الدخول بنجاح';
+        setTimeout(() => { msg.innerText = ''; }, 2000);
     } catch (error) {
-        msg.innerText = error.code === 'auth/user-not-found' ? 'لا يوجد حساب' : 'كلمة المرور خاطئة';
+        console.error('Login error:', error);
+        if (error.code === 'auth/user-not-found') {
+            msg.innerText = '❌ لا يوجد حساب بهذا البريد';
+        } else if (error.code === 'auth/wrong-password') {
+            msg.innerText = '❌ كلمة المرور غير صحيحة';
+        } else if (error.code === 'auth/invalid-email') {
+            msg.innerText = '❌ البريد الإلكتروني غير صالح';
+        } else {
+            msg.innerText = '❌ حدث خطأ: ' + error.message;
+        }
     }
 };
 
 window.register = async () => {
     const name = document.getElementById('regName').value;
-    const username = document.getElementById('regUsername').value.toLowerCase().replace(/[^a-z0-9_]/g, '');
+    let username = document.getElementById('regUsername').value;
     const email = document.getElementById('regEmail').value;
     const password = document.getElementById('regPass').value;
     const confirm = document.getElementById('regConfirmPass').value;
     const msg = document.getElementById('regMsg');
     
-    if (!name || !username || !email || !password) { msg.innerText = 'املأ جميع الحقول'; return; }
-    if (username.length < 3) { msg.innerText = 'اسم المستخدم يجب أن يكون 3 أحرف على الأقل'; return; }
-    if (password !== confirm) { msg.innerText = 'كلمة المرور غير متطابقة'; return; }
-    
-    // Check if username exists
-    const usersRef = collection(db, 'users');
-    const q = query(usersRef, where('username', '==', username));
-    const snapshot = await getDocs(q);
-    if (!snapshot.empty) {
-        msg.innerText = 'اسم المستخدم موجود بالفعل';
+    // Validation
+    if (!name || !username || !email || !password || !confirm) {
+        msg.innerText = '❌ الرجاء ملء جميع الحقول';
         return;
     }
     
+    // Clean username
+    username = username.toLowerCase().replace(/[^a-z0-9_]/g, '');
+    if (username.length < 3) {
+        msg.innerText = '❌ اسم المستخدم يجب أن يكون 3 أحرف على الأقل';
+        return;
+    }
+    
+    if (password !== confirm) {
+        msg.innerText = '❌ كلمة المرور غير متطابقة';
+        return;
+    }
+    
+    if (password.length < 6) {
+        msg.innerText = '❌ كلمة المرور يجب أن تكون 6 أحرف على الأقل';
+        return;
+    }
+    
+    msg.innerText = '🔄 جاري إنشاء الحساب...';
+    
     try {
+        // Check if username exists
+        const usersRef = collection(db, 'users');
+        const q = query(usersRef, where('username', '==', username));
+        const snapshot = await getDocs(q);
+        
+        if (!snapshot.empty) {
+            msg.innerText = '❌ اسم المستخدم موجود بالفعل';
+            return;
+        }
+        
+        // Create user in Firebase Auth
         const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-        await setDoc(doc(db, 'users', userCredential.user.uid), {
-            name, username, email, bio: '✨ مرحباً! أنا على VibeChat', avatarUrl: '', status: 'online', lastSeen: serverTimestamp(), createdAt: serverTimestamp()
+        const userId = userCredential.user.uid;
+        
+        // Create user profile in Firestore
+        await setDoc(doc(db, 'users', userId), {
+            name: name,
+            username: username,
+            email: email,
+            bio: '✨ مرحباً! أنا على VibeChat',
+            avatarUrl: '',
+            status: 'online',
+            lastSeen: new Date(),
+            createdAt: new Date()
         });
-        showToast('✅ تم إنشاء الحساب');
+        
+        msg.innerText = '✅ تم إنشاء الحساب بنجاح';
+        setTimeout(() => { msg.innerText = ''; }, 2000);
+        
     } catch (error) {
-        msg.innerText = error.code === 'auth/email-already-in-use' ? 'البريد مستخدم' : error.message;
+        console.error('Register error:', error);
+        if (error.code === 'auth/email-already-in-use') {
+            msg.innerText = '❌ البريد الإلكتروني مستخدم بالفعل';
+        } else if (error.code === 'auth/invalid-email') {
+            msg.innerText = '❌ البريد الإلكتروني غير صالح';
+        } else if (error.code === 'auth/weak-password') {
+            msg.innerText = '❌ كلمة المرور ضعيفة';
+        } else {
+            msg.innerText = '❌ حدث خطأ: ' + error.message;
+        }
     }
 };
 
 window.logout = async () => {
     if (currentUser) {
-        await updateDoc(doc(db, 'users', currentUser.uid), { status: 'offline', lastSeen: serverTimestamp() });
+        try {
+            await updateDoc(doc(db, 'users', currentUser.uid), { status: 'offline', lastSeen: new Date() });
+        } catch (e) {}
     }
     signOut(auth);
     location.reload();
 };
 
 async function loadUserData() {
-    const docRef = doc(db, 'users', currentUser.uid);
-    const docSnap = await getDoc(docRef);
-    if (docSnap.exists()) currentUserData = { id: docSnap.id, ...docSnap.data() };
-    await updateDoc(doc(db, 'users', currentUser.uid), { status: 'online', lastSeen: serverTimestamp() });
+    try {
+        const docRef = doc(db, 'users', currentUser.uid);
+        const docSnap = await getDoc(docRef);
+        if (docSnap.exists()) {
+            currentUserData = { id: docSnap.id, ...docSnap.data() };
+        } else {
+            // If user document doesn't exist, create it
+            await setDoc(doc(db, 'users', currentUser.uid), {
+                name: currentUser.email.split('@')[0],
+                username: currentUser.email.split('@')[0].toLowerCase().replace(/[^a-z0-9_]/g, ''),
+                email: currentUser.email,
+                bio: '✨ مرحباً! أنا على VibeChat',
+                avatarUrl: '',
+                status: 'online',
+                lastSeen: new Date(),
+                createdAt: new Date()
+            });
+            currentUserData = { id: currentUser.uid, name: currentUser.email.split('@')[0] };
+        }
+        await updateDoc(doc(db, 'users', currentUser.uid), { status: 'online', lastSeen: new Date() });
+    } catch (error) {
+        console.error('Load user error:', error);
+    }
 }
 
 // ========== LOAD ALL USERS ==========
 async function loadAllUsers() {
-    const usersRef = collection(db, 'users');
-    const snapshot = await getDocs(usersRef);
-    snapshot.docs.forEach(doc => {
-        allUsers[doc.id] = { id: doc.id, ...doc.data() };
-    });
+    try {
+        const usersRef = collection(db, 'users');
+        const snapshot = await getDocs(usersRef);
+        allUsers = {};
+        snapshot.docs.forEach(doc => {
+            allUsers[doc.id] = { id: doc.id, ...doc.data() };
+        });
+    } catch (error) {
+        console.error('Load users error:', error);
+    }
 }
 
 // ========== RENDER CHATS LIST ==========
@@ -93,36 +182,41 @@ async function renderChatsList() {
     const container = document.getElementById('chatsList');
     if (!container) return;
     
-    const chatsRef = collection(db, 'chats');
-    const q = query(chatsRef, where('participants', 'array-contains', currentUser.uid), orderBy('lastMessageTime', 'desc'));
-    const snapshot = await getDocs(q);
-    
-    if (snapshot.empty) {
-        container.innerHTML = '<div class="loading"><div class="spinner"></div><span>💬 لا توجد محادثات</span></div>';
-        return;
-    }
-    
-    let chatsHtml = '';
-    for (const doc of snapshot.docs) {
-        const chat = { id: doc.id, ...doc.data() };
-        const otherId = chat.participants.find(id => id !== currentUser.uid);
-        const otherUser = allUsers[otherId];
-        if (otherUser) {
-            chatsHtml += `
-                <div class="chat-item ${currentChatId === chat.id ? 'active' : ''}" onclick="openChat('${chat.id}', '${otherId}')">
-                    <div class="chat-avatar">
-                        ${otherUser.avatarUrl ? `<img src="${otherUser.avatarUrl}">` : `<i class="fas fa-user"></i>`}
-                        ${otherUser.status === 'online' ? '<span class="online-dot"></span>' : ''}
-                    </div>
-                    <div class="chat-info">
-                        <div class="chat-name">${escapeHtml(otherUser.name)}</div>
-                        <div class="chat-last-message">${escapeHtml(chat.lastMessage?.substring(0, 40) || '')}</div>
-                    </div>
-                </div>
-            `;
+    try {
+        const chatsRef = collection(db, 'chats');
+        const q = query(chatsRef, where('participants', 'array-contains', currentUser.uid), orderBy('lastMessageTime', 'desc'));
+        const snapshot = await getDocs(q);
+        
+        if (snapshot.empty) {
+            container.innerHTML = '<div class="loading"><div class="spinner"></div><span>💬 لا توجد محادثات</span></div>';
+            return;
         }
+        
+        let chatsHtml = '';
+        for (const docSnap of snapshot.docs) {
+            const chat = { id: docSnap.id, ...docSnap.data() };
+            const otherId = chat.participants.find(id => id !== currentUser.uid);
+            const otherUser = allUsers[otherId];
+            if (otherUser) {
+                chatsHtml += `
+                    <div class="chat-item ${currentChatId === chat.id ? 'active' : ''}" onclick="openChat('${chat.id}', '${otherId}')">
+                        <div class="chat-avatar">
+                            ${otherUser.avatarUrl ? `<img src="${otherUser.avatarUrl}">` : `<i class="fas fa-user"></i>`}
+                            ${otherUser.status === 'online' ? '<span class="online-dot"></span>' : ''}
+                        </div>
+                        <div class="chat-info">
+                            <div class="chat-name">${escapeHtml(otherUser.name)}</div>
+                            <div class="chat-last-message">${escapeHtml(chat.lastMessage?.substring(0, 40) || '')}</div>
+                        </div>
+                    </div>
+                `;
+            }
+        }
+        container.innerHTML = chatsHtml;
+    } catch (error) {
+        console.error('Render chats error:', error);
+        container.innerHTML = '<div class="loading"><div class="spinner"></div><span>حدث خطأ في تحميل المحادثات</span></div>';
     }
-    container.innerHTML = chatsHtml;
 }
 
 // ========== OPEN CHAT ==========
@@ -133,11 +227,13 @@ window.openChat = async (chatId, otherId) => {
     currentChat = { id: chatId, otherId };
     const otherUser = allUsers[otherId];
     
-    document.getElementById('chatHeader').style.display = 'flex';
-    document.getElementById('chatInputArea').style.display = 'flex';
-    document.getElementById('chatHeaderAvatar').innerHTML = otherUser.avatarUrl ? `<img src="${otherUser.avatarUrl}">` : `<i class="fas fa-user"></i>`;
-    document.getElementById('chatHeaderName').innerText = otherUser.name;
-    document.getElementById('chatHeaderStatus').innerText = otherUser.status === 'online' ? '🟢 متصل الآن' : `آخر ظهور ${new Date(otherUser.lastSeen?.toDate()).toLocaleString()}`;
+    if (otherUser) {
+        document.getElementById('chatHeader').style.display = 'flex';
+        document.getElementById('chatInputArea').style.display = 'flex';
+        document.getElementById('chatHeaderAvatar').innerHTML = otherUser.avatarUrl ? `<img src="${otherUser.avatarUrl}">` : `<i class="fas fa-user"></i>`;
+        document.getElementById('chatHeaderName').innerText = otherUser.name;
+        document.getElementById('chatHeaderStatus').innerText = otherUser.status === 'online' ? '🟢 متصل الآن' : `آخر ظهور ${otherUser.lastSeen ? new Date(otherUser.lastSeen).toLocaleString() : 'غير معروف'}`;
+    }
     
     loadMessages(chatId);
     renderChatsList();
@@ -152,8 +248,8 @@ function loadMessages(chatId) {
     
     unsubscribeMessages = onSnapshot(q, (snapshot) => {
         container.innerHTML = '';
-        snapshot.forEach((doc) => {
-            const msg = { id: doc.id, ...doc.data() };
+        snapshot.forEach((docSnap) => {
+            const msg = { id: docSnap.id, ...docSnap.data() };
             const isSent = msg.senderId === currentUser.uid;
             const time = msg.timestamp?.toDate ? new Date(msg.timestamp.toDate()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
             let content = '';
@@ -187,16 +283,23 @@ function loadMessages(chatId) {
         
         // Mark messages as read
         markMessagesAsRead(chatId);
+    }, (error) => {
+        console.error('Messages error:', error);
+        container.innerHTML = '<div class="loading"><div class="spinner"></div><span>حدث خطأ في تحميل الرسائل</span></div>';
     });
 }
 
 async function markMessagesAsRead(chatId) {
-    const messagesRef = collection(db, 'chats', chatId, 'messages');
-    const q = query(messagesRef, where('senderId', '!=', currentUser.uid), where('read', '==', false));
-    const snapshot = await getDocs(q);
-    snapshot.forEach(async (doc) => {
-        await updateDoc(doc.ref, { read: true });
-    });
+    try {
+        const messagesRef = collection(db, 'chats', chatId, 'messages');
+        const q = query(messagesRef, where('senderId', '!=', currentUser.uid), where('read', '==', false));
+        const snapshot = await getDocs(q);
+        snapshot.forEach(async (docSnap) => {
+            await updateDoc(docSnap.ref, { read: true });
+        });
+    } catch (error) {
+        console.error('Mark read error:', error);
+    }
 }
 
 // ========== SEND MESSAGE ==========
@@ -209,26 +312,36 @@ window.sendMessage = async () => {
     let media = null;
     if (selectedMediaFile) {
         showToast('📤 جاري الرفع...');
-        const result = await uploadMedia(selectedMediaFile);
-        media = { url: result.url, type: result.type };
-        selectedMediaFile = null;
+        try {
+            const result = await uploadMedia(selectedMediaFile);
+            media = { url: result.url, type: result.type };
+            selectedMediaFile = null;
+        } catch (error) {
+            showToast('❌ فشل رفع الملف');
+            return;
+        }
     }
     
-    await addDoc(collection(db, 'chats', currentChatId, 'messages'), {
-        senderId: currentUser.uid,
-        senderName: currentUserData.name,
-        text: text || null,
-        media: media,
-        timestamp: serverTimestamp(),
-        read: false
-    });
-    
-    await updateDoc(doc(db, 'chats', currentChatId), {
-        lastMessage: text || (media?.type === 'image' ? '📷 صورة' : media?.type === 'video' ? '🎥 فيديو' : '🎤 تسجيل'),
-        lastMessageTime: serverTimestamp()
-    });
-    
-    input.value = '';
+    try {
+        await addDoc(collection(db, 'chats', currentChatId, 'messages'), {
+            senderId: currentUser.uid,
+            senderName: currentUserData?.name || 'مستخدم',
+            text: text || null,
+            media: media,
+            timestamp: new Date(),
+            read: false
+        });
+        
+        await updateDoc(doc(db, 'chats', currentChatId), {
+            lastMessage: text || (media?.type === 'image' ? '📷 صورة' : media?.type === 'video' ? '🎥 فيديو' : '🎤 تسجيل'),
+            lastMessageTime: new Date()
+        });
+        
+        input.value = '';
+    } catch (error) {
+        console.error('Send message error:', error);
+        showToast('❌ فشل إرسال الرسالة');
+    }
 };
 
 async function uploadMedia(file) {
@@ -242,6 +355,7 @@ async function uploadMedia(file) {
     const url = `https://api.cloudinary.com/v1_1/${CLOUD_NAME}/${resourceType}/upload`;
     const response = await fetch(url, { method: 'POST', body: formData });
     const data = await response.json();
+    if (!data.secure_url) throw new Error('Upload failed');
     return { url: data.secure_url, type: resourceType === 'raw' ? 'audio' : resourceType };
 }
 
@@ -293,34 +407,39 @@ window.searchUsers = async () => {
     if (username.length < 2) return;
     
     const container = document.getElementById('searchResults');
-    const usersRef = collection(db, 'users');
-    const q = query(usersRef, where('username', '>=', username), where('username', '<=', username + '\uf8ff'), limit(20));
-    const snapshot = await getDocs(q);
-    
-    if (snapshot.empty) {
-        container.innerHTML = '<div class="text-center text-[#8696a0] py-4">لا توجد نتائج</div>';
-        return;
-    }
-    
-    let html = '';
-    snapshot.forEach(doc => {
-        if (doc.id !== currentUser.uid) {
-            const user = { id: doc.id, ...doc.data() };
-            html += `
-                <div class="user-card" onclick="startChat('${user.id}', '${escapeHtml(user.name)}')">
-                    <div class="user-avatar">
-                        ${user.avatarUrl ? `<img src="${user.avatarUrl}">` : `<i class="fas fa-user"></i>`}
-                    </div>
-                    <div class="user-info">
-                        <div class="user-name">${escapeHtml(user.name)}</div>
-                        <div class="user-username">@${escapeHtml(user.username)}</div>
-                    </div>
-                    <i class="fas fa-comment text-[#00a884]"></i>
-                </div>
-            `;
+    try {
+        const usersRef = collection(db, 'users');
+        const q = query(usersRef, where('username', '>=', username), where('username', '<=', username + '\uf8ff'), limit(20));
+        const snapshot = await getDocs(q);
+        
+        if (snapshot.empty) {
+            container.innerHTML = '<div class="text-center text-[#8696a0] py-4">لا توجد نتائج</div>';
+            return;
         }
-    });
-    container.innerHTML = html || '<div class="text-center text-[#8696a0] py-4">لا توجد نتائج</div>';
+        
+        let html = '';
+        snapshot.forEach(docSnap => {
+            if (docSnap.id !== currentUser.uid) {
+                const user = { id: docSnap.id, ...docSnap.data() };
+                html += `
+                    <div class="user-card" onclick="startChat('${user.id}', '${escapeHtml(user.name)}')">
+                        <div class="user-avatar">
+                            ${user.avatarUrl ? `<img src="${user.avatarUrl}">` : `<i class="fas fa-user"></i>`}
+                        </div>
+                        <div class="user-info">
+                            <div class="user-name">${escapeHtml(user.name)}</div>
+                            <div class="user-username">@${escapeHtml(user.username)}</div>
+                        </div>
+                        <i class="fas fa-comment text-[#00a884]"></i>
+                    </div>
+                `;
+            }
+        });
+        container.innerHTML = html || '<div class="text-center text-[#8696a0] py-4">لا توجد نتائج</div>';
+    } catch (error) {
+        console.error('Search error:', error);
+        container.innerHTML = '<div class="text-center text-[#8696a0] py-4">حدث خطأ في البحث</div>';
+    }
 };
 
 window.openNewChatModal = () => {
@@ -329,17 +448,22 @@ window.openNewChatModal = () => {
 
 window.startChat = async (otherId, otherName) => {
     const chatId = currentUser.uid < otherId ? `${currentUser.uid}_${otherId}` : `${otherId}_${currentUser.uid}`;
-    const chatRef = doc(db, 'chats', chatId);
-    const chatSnap = await getDoc(chatRef);
-    if (!chatSnap.exists()) {
-        await setDoc(chatRef, {
-            participants: [currentUser.uid, otherId],
-            createdAt: serverTimestamp()
-        });
+    try {
+        const chatRef = doc(db, 'chats', chatId);
+        const chatSnap = await getDoc(chatRef);
+        if (!chatSnap.exists()) {
+            await setDoc(chatRef, {
+                participants: [currentUser.uid, otherId],
+                createdAt: new Date()
+            });
+        }
+        closeSearchModal();
+        openChat(chatId, otherId);
+        showToast(`💬 بدأت محادثة مع ${otherName}`);
+    } catch (error) {
+        console.error('Start chat error:', error);
+        showToast('❌ فشل بدء المحادثة');
     }
-    closeSearchModal();
-    openChat(chatId, otherId);
-    showToast(`💬 بدأت محادثة مع ${otherName}`);
 };
 
 // ========== CALLS ==========
@@ -348,8 +472,12 @@ window.startCall = async (type) => {
     document.getElementById('callModal').classList.add('open');
     const channelName = `call_${currentChatId}`;
     try {
-        agoraClient = AgoraRTC.createClient({ mode: "rtc", codec: "vp8" });
-        localTracks = await AgoraRTC.createMicrophoneAndCameraTracks();
+        if (!window.AgoraRTC) {
+            showToast('❌ جاري تحميل خدمة المكالمات...');
+            return;
+        }
+        agoraClient = window.AgoraRTC.createClient({ mode: "rtc", codec: "vp8" });
+        localTracks = await window.AgoraRTC.createMicrophoneAndCameraTracks();
         localTracks[0].play("localVideo");
         if (type === 'video') localTracks[1].play("localVideo");
         await agoraClient.join(AGORA_APP_ID, channelName, null, currentUser.uid);
@@ -359,7 +487,11 @@ window.startCall = async (type) => {
             if (mediaType === "video") user.videoTrack.play("remoteVideo");
             if (mediaType === "audio") user.audioTrack.play();
         });
-    } catch (err) { endCall(); }
+    } catch (err) { 
+        console.error('Call error:', err);
+        showToast('❌ فشل الاتصال');
+        endCall();
+    }
 };
 
 window.endCall = () => {
@@ -367,6 +499,7 @@ window.endCall = () => {
     if (agoraClient) agoraClient.leave();
     document.getElementById('callModal').classList.remove('open');
     localTracks = null;
+    agoraClient = null;
 };
 
 window.toggleMute = () => { if (localTracks?.[0]) localTracks[0].setEnabled(!localTracks[0].enabled); };
@@ -374,15 +507,18 @@ window.toggleVideo = () => { if (localTracks?.[1]) localTracks[1].setEnabled(!lo
 
 // ========== PROFILE ==========
 window.openProfile = () => {
-    document.getElementById('profileName').value = currentUserData?.name || '';
-    document.getElementById('profileUsername').value = currentUserData?.username || '';
-    document.getElementById('profileBio').value = currentUserData?.bio || '';
+    if (!currentUserData) return;
+    document.getElementById('profileName').value = currentUserData.name || '';
+    document.getElementById('profileUsername').value = currentUserData.username || '';
+    document.getElementById('profileBio').value = currentUserData.bio || '';
     const avatarDiv = document.getElementById('profileAvatarLarge');
-    avatarDiv.innerHTML = currentUserData?.avatarUrl ? `<img src="${currentUserData.avatarUrl}" class="w-full h-full object-cover">` : '<i class="fas fa-user fa-3x text-white"></i>';
+    avatarDiv.innerHTML = currentUserData.avatarUrl ? `<img src="${currentUserData.avatarUrl}" class="w-full h-full object-cover">` : '<i class="fas fa-user fa-3x text-white"></i>';
     document.getElementById('profileModal').classList.add('open');
 };
 
-window.closeProfileModal = () => document.getElementById('profileModal').classList.remove('open');
+window.closeProfileModal = () => {
+    document.getElementById('profileModal').classList.remove('open');
+};
 
 window.saveProfile = async () => {
     const name = document.getElementById('profileName').value;
@@ -390,10 +526,14 @@ window.saveProfile = async () => {
     const bio = document.getElementById('profileBio').value;
     if (!name.trim()) { showToast('❌ الاسم مطلوب'); return; }
     if (!username) username = name.toLowerCase().replace(/\s/g, '');
-    await updateDoc(doc(db, 'users', currentUser.uid), { name: name.trim(), username, bio });
-    showToast('✅ تم التحديث');
-    closeProfileModal();
-    location.reload();
+    try {
+        await updateDoc(doc(db, 'users', currentUser.uid), { name: name.trim(), username, bio });
+        showToast('✅ تم التحديث');
+        closeProfileModal();
+        location.reload();
+    } catch (error) {
+        showToast('❌ فشل التحديث');
+    }
 };
 
 window.changeProfilePhoto = () => {
@@ -404,24 +544,47 @@ window.changeProfilePhoto = () => {
         const file = e.target.files[0];
         if (!file) return;
         showToast('📤 جاري الرفع...');
-        const result = await uploadMedia(file);
-        await updateDoc(doc(db, 'users', currentUser.uid), { avatarUrl: result.url });
-        showToast('✅ تم التحديث');
-        location.reload();
+        try {
+            const result = await uploadMedia(file);
+            await updateDoc(doc(db, 'users', currentUser.uid), { avatarUrl: result.url });
+            showToast('✅ تم التحديث');
+            location.reload();
+        } catch (error) {
+            showToast('❌ فشل الرفع');
+        }
     };
     input.click();
 };
 
 // ========== UTILITIES ==========
-function escapeHtml(text) { if (!text) return ''; const div = document.createElement('div'); div.textContent = text; return div.innerHTML; }
+function escapeHtml(text) { 
+    if (!text) return ''; 
+    const div = document.createElement('div'); 
+    div.textContent = text; 
+    return div.innerHTML; 
+}
+
 function showToast(message) {
     let toast = document.getElementById('customToast');
-    if (!toast) { toast = document.createElement('div'); toast.id = 'customToast'; document.body.appendChild(toast); }
-    toast.innerText = message; toast.style.opacity = '1';
-    setTimeout(() => toast.style.opacity = '0', 3000);
+    if (!toast) { 
+        toast = document.createElement('div'); 
+        toast.id = 'customToast'; 
+        document.body.appendChild(toast); 
+    }
+    toast.innerText = message; 
+    toast.style.opacity = '1';
+    setTimeout(() => { toast.style.opacity = '0'; }, 3000);
 }
-window.openImageModal = (url) => { document.getElementById('modalImage').src = url; document.getElementById('imageModal').style.display = 'flex'; };
-window.closeImageModal = () => document.getElementById('imageModal').style.display = 'none';
+
+window.openImageModal = (url) => { 
+    document.getElementById('modalImage').src = url; 
+    document.getElementById('imageModal').style.display = 'flex'; 
+};
+
+window.closeImageModal = () => { 
+    document.getElementById('imageModal').style.display = 'none'; 
+};
+
 window.searchChats = () => {
     const query = document.getElementById('searchChats').value.toLowerCase();
     document.querySelectorAll('.chat-item').forEach(item => {
@@ -433,7 +596,9 @@ window.searchChats = () => {
 // ========== ONLINE STATUS ==========
 setInterval(async () => {
     if (currentUser) {
-        await updateDoc(doc(db, 'users', currentUser.uid), { status: 'online', lastSeen: serverTimestamp() });
+        try {
+            await updateDoc(doc(db, 'users', currentUser.uid), { status: 'online', lastSeen: new Date() });
+        } catch (e) {}
     }
 }, 30000);
 
@@ -446,12 +611,16 @@ onAuthStateChanged(auth, async (user) => {
         document.getElementById('authScreen').style.display = 'none';
         document.getElementById('mainApp').style.display = 'block';
         const sidebarAvatar = document.getElementById('sidebarAvatar');
-        sidebarAvatar.innerHTML = currentUserData?.avatarUrl ? `<img src="${currentUserData.avatarUrl}" class="w-full h-full object-cover">` : '<i class="fas fa-user text-white text-xl"></i>';
+        if (sidebarAvatar) {
+            sidebarAvatar.innerHTML = currentUserData?.avatarUrl ? `<img src="${currentUserData.avatarUrl}" class="w-full h-full object-cover">` : '<i class="fas fa-user text-white text-xl"></i>';
+        }
         renderChatsList();
-        showToast(`👋 مرحباً ${currentUserData?.name}`);
-        // Update online status on page close
+        showToast(`👋 مرحباً ${currentUserData?.name || 'مستخدم'}`);
+        
         window.addEventListener('beforeunload', async () => {
-            await updateDoc(doc(db, 'users', currentUser.uid), { status: 'offline', lastSeen: serverTimestamp() });
+            try {
+                await updateDoc(doc(db, 'users', currentUser.uid), { status: 'offline', lastSeen: new Date() });
+            } catch (e) {}
         });
     } else {
         document.getElementById('authScreen').style.display = 'flex';
@@ -459,4 +628,4 @@ onAuthStateChanged(auth, async (user) => {
     }
 });
 
-console.log('✅ VibeChat Ready');
+console.log('✅ VibeChat Ready - All Fixed');

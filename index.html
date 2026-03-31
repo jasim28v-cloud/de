@@ -2,150 +2,202 @@
 <html lang="ar" dir="rtl">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>WhatsApp Web Clone</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>VibeChat | منصة تواصل حديثة</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://upload-widget.cloudinary.com/global/all.js"></script>
-    <script src="https://cdn.agora.io/sdk/release/AgoraRTC_N-4.22.0.js"></script>
     <script type="importmap">
         {
             "imports": {
                 "firebase/app": "https://www.gstatic.com/firebasejs/10.7.0/firebase-app.js",
                 "firebase/auth": "https://www.gstatic.com/firebasejs/10.7.0/firebase-auth.js",
-                "firebase/database": "https://www.gstatic.com/firebasejs/10.7.0/firebase-database.js"
+                "firebase/database": "https://www.gstatic.com/firebasejs/10.7.0/firebase-database.js",
+                "firebase/firestore": "https://www.gstatic.com/firebasejs/10.7.0/firebase-firestore.js"
             }
         }
     </script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
     <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
         body {
             font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-            background: #111b21;
+            background: #0b141a;
             color: #e9edef;
-            overflow: hidden;
             height: 100vh;
+            overflow: hidden;
         }
 
-        /* الوضع الليلي (أساسي) */
-        body.light-mode {
-            background: #f0f2f5;
-            color: #111b21;
-        }
-        body.light-mode .chat-sidebar { background: #fff; border-left-color: #e9edef; }
-        body.light-mode .chat-header { background: #f0f2f5; border-bottom-color: #e9edef; }
-        body.light-mode .message-bubble { background: #e9edef; color: #111b21; }
-        body.light-mode .message-bubble.sent { background: #d9f0c3; }
-        body.light-mode .input-area { background: #f0f2f5; border-top-color: #e9edef; }
-        body.light-mode .chat-item:hover { background: #f5f6f6; }
+        /* VibeChat Colors */
+        .bg-vibe-dark { background: #0b141a; }
+        .bg-vibe-darker { background: #111b21; }
+        .bg-vibe-teal { background: #00a884; }
+        .bg-vibe-teal-dark { background: #005c4b; }
+        .bg-vibe-gray { background: #202c33; }
+        .bg-vibe-light-gray { background: #2a3942; }
+        .text-vibe-teal { color: #00a884; }
+        .text-vibe-secondary { color: #8696a0; }
+        .border-vibe { border-color: #2a3942; }
 
-        /* شاشة تسجيل الدخول */
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: #202c33; }
+        ::-webkit-scrollbar-thumb { background: #3b4a54; border-radius: 3px; }
+
+        /* Glassmorphism */
+        .glass {
+            background: rgba(32, 44, 51, 0.7);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .glass-card {
+            background: rgba(32, 44, 51, 0.5);
+            backdrop-filter: blur(8px);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            transition: all 0.3s ease;
+        }
+
+        .glass-card:hover {
+            background: rgba(42, 57, 66, 0.6);
+            transform: translateY(-2px);
+        }
+
+        /* Animations */
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes slideIn {
+            from { opacity: 0; transform: translateX(-20px); }
+            to { opacity: 1; transform: translateX(0); }
+        }
+        @keyframes messageSlideRight {
+            from { opacity: 0; transform: translateX(20px); }
+            to { opacity: 1; transform: translateX(0); }
+        }
+        @keyframes messageSlideLeft {
+            from { opacity: 0; transform: translateX(-20px); }
+            to { opacity: 1; transform: translateX(0); }
+        }
+
+        .animate-fade-in { animation: fadeIn 0.3s ease-out; }
+        .animate-slide-in { animation: slideIn 0.3s ease-out; }
+        .message-sent { animation: messageSlideRight 0.2s ease-out; }
+        .message-received { animation: messageSlideLeft 0.2s ease-out; }
+
+        /* Auth Screen */
         .auth-screen {
             position: fixed;
             inset: 0;
             z-index: 1000;
-            background: #111b21;
+            background: #0b141a;
             display: flex;
             align-items: center;
             justify-content: center;
         }
         .auth-card {
-            background: #2a2f36;
-            border-radius: 24px;
-            padding: 40px 32px;
+            background: #202c33;
+            border-radius: 32px;
+            padding: 48px 40px;
             width: 90%;
-            max-width: 420px;
+            max-width: 460px;
             text-align: center;
+            box-shadow: 0 12px 28px rgba(0, 0, 0, 0.3);
         }
-        .auth-card h1 { font-size: 28px; font-weight: 600; margin-bottom: 30px; color: #25d366; }
+        .auth-card h1 { font-size: 36px; font-weight: 700; margin-bottom: 24px; color: #00a884; }
         .auth-card input {
             width: 100%;
-            padding: 14px 16px;
+            padding: 14px 18px;
             margin: 10px 0;
-            border-radius: 30px;
-            background: #3b4048;
+            border-radius: 24px;
+            background: #2a3942;
             border: none;
-            color: white;
+            color: #e9edef;
+            font-size: 15px;
         }
+        .auth-card input:focus { outline: none; background: #3b4a54; }
         .auth-card button {
             width: 100%;
-            padding: 12px;
+            padding: 14px;
             margin-top: 16px;
-            background: #25d366;
+            background: #00a884;
             border: none;
-            border-radius: 30px;
+            border-radius: 24px;
             color: white;
             font-weight: 600;
             cursor: pointer;
+            transition: 0.3s;
         }
-        .auth-tabs {
-            display: flex;
-            gap: 12px;
-            margin-bottom: 30px;
-            background: #3b4048;
-            border-radius: 60px;
-            padding: 4px;
-        }
-        .auth-tab {
-            flex: 1;
-            padding: 10px;
-            background: none;
-            border: none;
-            color: #aaa;
-            cursor: pointer;
-            border-radius: 60px;
-        }
-        .auth-tab.active { background: #25d366; color: white; }
+        .auth-card button:hover { background: #008f6f; }
         .auth-form { display: none; }
         .auth-form.active { display: block; }
-        .error-msg { color: #ff5555; font-size: 12px; margin-top: 8px; }
+        .error-msg { color: #ff6b6b; font-size: 12px; margin-top: 8px; text-align: left; }
+        .auth-link { margin-top: 28px; color: #8696a0; font-size: 13px; }
+        .auth-link a { color: #00a884; text-decoration: none; }
 
-        /* التطبيق الرئيسي */
-        #mainApp { display: none; height: 100vh; display: flex; }
+        /* Main App */
+        #mainApp { display: none; width: 100%; height: 100%; }
 
-        /* الشريط الجانبي (قائمة المحادثات) */
-        .chat-sidebar {
-            width: 380px;
-            background: #1e2a32;
-            border-left: 1px solid #2a2f36;
+        /* Sidebar */
+        .sidebar {
+            width: 80px;
+            background: #111b21;
+            border-left: 1px solid #2a3942;
             display: flex;
             flex-direction: column;
-            overflow-y: auto;
-        }
-        .sidebar-header {
-            padding: 16px;
-            background: #1e2a32;
-            border-bottom: 1px solid #2a2f36;
-            display: flex;
-            justify-content: space-between;
             align-items: center;
+            padding: 20px 0;
+            gap: 24px;
         }
-        .sidebar-header h2 { font-size: 20px; font-weight: 600; color: #25d366; }
-        .profile-avatar {
-            width: 40px;
-            height: 40px;
+        .sidebar-avatar {
+            width: 48px;
+            height: 48px;
             border-radius: 50%;
-            background: #25d366;
+            background: #00a884;
             display: flex;
             align-items: center;
             justify-content: center;
             cursor: pointer;
             overflow: hidden;
+            transition: 0.3s;
         }
-        .search-box {
-            padding: 12px 16px;
-            border-bottom: 1px solid #2a2f36;
+        .sidebar-avatar:hover { transform: scale(1.05); }
+        .sidebar-icon {
+            color: #8696a0;
+            font-size: 22px;
+            cursor: pointer;
+            transition: 0.3s;
         }
-        .search-box input {
+        .sidebar-icon:hover { color: #00a884; }
+
+        /* Chat List */
+        .chat-list {
+            width: 360px;
+            background: #202c33;
+            border-left: 1px solid #2a3942;
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+        }
+        .chat-list-header {
+            padding: 16px 20px;
+            border-bottom: 1px solid #2a3942;
+        }
+        .search-input {
             width: 100%;
-            background: #2a2f36;
+            padding: 12px 16px;
+            background: #2a3942;
             border: none;
-            border-radius: 30px;
-            padding: 10px 16px;
-            color: white;
+            border-radius: 24px;
+            color: #e9edef;
+            font-size: 14px;
         }
-        .chats-list { flex: 1; overflow-y: auto; }
+        .search-input::placeholder { color: #8696a0; }
         .chat-item {
             display: flex;
             align-items: center;
@@ -153,57 +205,66 @@
             padding: 12px 16px;
             cursor: pointer;
             transition: background 0.2s;
+            border-bottom: 1px solid #2a3942;
         }
-        .chat-item:hover { background: #2a2f36; }
+        .chat-item:hover { background: #2a3942; }
+        .chat-item.active { background: #2a3942; }
         .chat-avatar {
-            width: 48px;
-            height: 48px;
+            width: 52px;
+            height: 52px;
             border-radius: 50%;
-            background: #25d366;
-            display: flex;
-            align-items: center;
-            justify-content: center;
+            background: #00a884;
             overflow: hidden;
+            flex-shrink: 0;
+            position: relative;
         }
-        .chat-info { flex: 1; }
-        .chat-name { font-weight: 600; margin-bottom: 4px; }
-        .chat-last-msg { font-size: 13px; color: #8696a0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-        .chat-time { font-size: 11px; color: #8696a0; }
+        .chat-avatar img { width: 100%; height: 100%; object-fit: cover; }
+        .online-dot {
+            position: absolute;
+            bottom: 2px;
+            right: 2px;
+            width: 12px;
+            height: 12px;
+            background: #00a884;
+            border-radius: 50%;
+            border: 2px solid #202c33;
+        }
+        .chat-info { flex: 1; min-width: 0; }
+        .chat-name { font-weight: 500; font-size: 15px; margin-bottom: 4px; }
+        .chat-last-message { font-size: 13px; color: #8696a0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
-        /* منطقة المحادثة */
-        .chat-area {
+        /* Main Chat */
+        .chat-main {
             flex: 1;
+            background: #0b141a;
             display: flex;
             flex-direction: column;
-            background: #111b21;
+            height: 100%;
         }
         .chat-header {
-            padding: 12px 16px;
-            background: #1e2a32;
-            border-bottom: 1px solid #2a2f36;
+            padding: 12px 20px;
+            background: #202c33;
+            border-bottom: 1px solid #2a3942;
             display: flex;
             align-items: center;
-            gap: 12px;
+            gap: 16px;
         }
         .chat-header-avatar {
-            width: 40px;
-            height: 40px;
+            width: 44px;
+            height: 44px;
             border-radius: 50%;
-            background: #25d366;
+            background: #00a884;
             overflow: hidden;
-        }
-        .chat-header-info { flex: 1; }
-        .chat-header-name { font-weight: 600; }
-        .chat-header-status { font-size: 12px; color: #8696a0; }
-        .call-buttons { display: flex; gap: 16px; }
-        .call-btn {
-            background: none;
-            border: none;
-            color: #25d366;
-            font-size: 20px;
             cursor: pointer;
         }
-        .messages-container {
+        .chat-header-info h3 { font-size: 16px; font-weight: 500; margin-bottom: 2px; }
+        .chat-header-status { font-size: 12px; color: #8696a0; }
+        .chat-actions { display: flex; gap: 20px; margin-right: auto; }
+        .chat-actions i { font-size: 20px; color: #aebac1; cursor: pointer; }
+        .chat-actions i:hover { color: #00a884; }
+
+        /* Messages Area */
+        .messages-area {
             flex: 1;
             overflow-y: auto;
             padding: 20px;
@@ -213,160 +274,275 @@
         }
         .message {
             display: flex;
-            max-width: 70%;
-            margin-bottom: 4px;
+            max-width: 65%;
+            animation: fadeIn 0.2s ease;
         }
-        .message.sent { align-self: flex-end; justify-content: flex-end; }
+        .message.sent { align-self: flex-end; flex-direction: row-reverse; }
         .message.received { align-self: flex-start; }
         .message-bubble {
-            background: #2a2f36;
             padding: 8px 12px;
             border-radius: 18px;
-            word-break: break-word;
+            font-size: 14px;
+            line-height: 1.4;
         }
-        .message.sent .message-bubble { background: #005c4b; }
-        .message-time { font-size: 10px; color: #8696a0; margin-top: 4px; text-align: right; }
-        .message-status { font-size: 10px; margin-left: 4px; color: #25d366; }
-        .message-media { max-width: 200px; max-height: 200px; border-radius: 12px; cursor: pointer; }
-        .input-area {
+        .message.sent .message-bubble {
+            background: #005c4b;
+            color: #e9edef;
+            border-bottom-right-radius: 4px;
+        }
+        .message.received .message-bubble {
+            background: #202c33;
+            color: #e9edef;
+            border-bottom-left-radius: 4px;
+        }
+        .message-media {
+            margin-top: 6px;
+            border-radius: 12px;
+            overflow: hidden;
+            max-width: 250px;
+            cursor: pointer;
+        }
+        .message-media img { width: 100%; border-radius: 12px; }
+        .message-audio audio { height: 36px; }
+        .message-time {
+            font-size: 10px;
+            color: #8696a0;
+            margin-top: 4px;
+            text-align: right;
+        }
+
+        /* Input Area */
+        .chat-input-area {
             padding: 12px 16px;
-            background: #1e2a32;
-            border-top: 1px solid #2a2f36;
+            background: #202c33;
             display: flex;
             gap: 12px;
             align-items: center;
         }
-        .input-area input {
+        .chat-input-area input {
             flex: 1;
-            background: #2a2f36;
+            padding: 12px 16px;
+            background: #2a3942;
             border: none;
-            border-radius: 30px;
-            padding: 10px 16px;
-            color: white;
+            border-radius: 24px;
+            color: #e9edef;
+            font-size: 14px;
         }
-        .attach-btn, .send-btn {
+        .chat-input-area button {
             background: none;
             border: none;
-            font-size: 22px;
-            color: #25d366;
-            cursor: pointer;
-        }
-
-        /* لوحة المكالمة */
-        .call-panel {
-            position: fixed;
-            inset: 0;
-            background: #111b21;
-            z-index: 500;
-            display: none;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-        }
-        .call-panel.open { display: flex; }
-        .call-video {
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
-        }
-        .call-controls {
-            position: absolute;
-            bottom: 40px;
-            display: flex;
-            gap: 30px;
-        }
-        .call-control {
-            background: #2a2f36;
-            border: none;
-            width: 60px;
-            height: 60px;
-            border-radius: 50%;
+            color: #aebac1;
             font-size: 24px;
             cursor: pointer;
+            padding: 8px;
         }
-        .call-end { background: #ff4444; color: white; }
+        .chat-input-area button:hover { color: #00a884; }
 
-        .loading { text-align: center; padding: 50px; color: #8696a0; }
+        /* Modals */
+        .modal {
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.7);
+            z-index: 1000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            opacity: 0;
+            visibility: hidden;
+            transition: 0.2s;
+        }
+        .modal.open { opacity: 1; visibility: visible; }
+        .modal-content {
+            background: #202c33;
+            border-radius: 28px;
+            padding: 28px;
+            width: 90%;
+            max-width: 500px;
+            max-height: 80vh;
+            overflow-y: auto;
+        }
+        .user-card {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            padding: 12px;
+            background: #2a3942;
+            border-radius: 20px;
+            margin-bottom: 12px;
+            cursor: pointer;
+            transition: 0.2s;
+        }
+        .user-card:hover { background: #3b4a54; }
+        .user-avatar {
+            width: 48px;
+            height: 48px;
+            border-radius: 50%;
+            background: #00a884;
+            overflow: hidden;
+        }
+        .user-info { flex: 1; }
+        .user-name { font-weight: 600; margin-bottom: 4px; }
+        .user-username { font-size: 12px; color: #8696a0; }
+
+        .loading { text-align: center; padding: 40px; color: #8696a0; }
         .spinner {
-            width: 36px;
-            height: 36px;
-            border: 3px solid rgba(37,211,102,0.3);
-            border-top-color: #25d366;
+            width: 32px;
+            height: 32px;
+            border: 2px solid #00a88433;
+            border-top-color: #00a884;
             border-radius: 50%;
             animation: spin 0.8s linear infinite;
-            margin: 0 auto;
+            margin: 0 auto 12px;
         }
         @keyframes spin { to { transform: rotate(360deg); } }
+
+        #customToast {
+            position: fixed;
+            bottom: 90px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #2a3942;
+            color: #e9edef;
+            padding: 10px 20px;
+            border-radius: 24px;
+            z-index: 1200;
+            font-size: 13px;
+            opacity: 0;
+            transition: 0.2s;
+            pointer-events: none;
+        }
     </style>
 </head>
 <body>
 
-<!-- شاشة تسجيل الدخول -->
+<!-- Auth Screen -->
 <div id="authScreen" class="auth-screen">
     <div class="auth-card">
-        <h1>WhatsApp Web</h1>
-        <div class="auth-tabs">
-            <button class="auth-tab active" onclick="switchAuth('login')">تسجيل الدخول</button>
-            <button class="auth-tab" onclick="switchAuth('register')">إنشاء حساب</button>
-        </div>
+        <h1>💚 VibeChat</h1>
         <div id="loginForm" class="auth-form active">
             <input type="email" id="loginEmail" placeholder="البريد الإلكتروني">
             <input type="password" id="loginPassword" placeholder="كلمة المرور">
-            <button onclick="login()">دخول</button>
+            <button onclick="login()">تسجيل الدخول</button>
             <div id="loginMsg" class="error-msg"></div>
+            <div class="auth-link">ليس لديك حساب؟ <a href="#" onclick="switchAuth('register')">إنشاء حساب</a></div>
         </div>
         <div id="registerForm" class="auth-form">
-            <input type="text" id="regName" placeholder="الاسم">
+            <input type="text" id="regName" placeholder="الاسم الظاهر">
+            <input type="text" id="regUsername" placeholder="اسم المستخدم (مثال: username)">
             <input type="email" id="regEmail" placeholder="البريد الإلكتروني">
-            <input type="password" id="regPass" placeholder="كلمة المرور (6 أحرف)">
+            <input type="password" id="regPass" placeholder="كلمة المرور">
+            <input type="password" id="regConfirmPass" placeholder="تأكيد كلمة المرور">
             <button onclick="register()">إنشاء حساب</button>
             <div id="regMsg" class="error-msg"></div>
+            <div class="auth-link">لديك حساب؟ <a href="#" onclick="switchAuth('login')">تسجيل الدخول</a></div>
         </div>
-        <div class="version">WhatsApp Web Clone | v1.0</div>
     </div>
 </div>
 
-<!-- التطبيق الرئيسي -->
+<!-- Main App -->
 <div id="mainApp">
-    <div class="chat-sidebar">
-        <div class="sidebar-header">
-            <h2>WhatsApp</h2>
-            <div class="profile-avatar" id="profileAvatar" onclick="openProfile()">👤</div>
+    <div style="display: flex; width: 100%; height: 100%;">
+        <!-- Sidebar -->
+        <div class="sidebar">
+            <div class="sidebar-avatar" id="sidebarAvatar" onclick="openProfile()">
+                <i class="fas fa-user text-white text-xl"></i>
+            </div>
+            <i class="fas fa-search sidebar-icon" onclick="openSearchModal()"></i>
+            <i class="fas fa-comment sidebar-icon" onclick="openNewChatModal()"></i>
+            <i class="fas fa-sign-out-alt sidebar-icon" style="margin-top: auto;" onclick="logout()"></i>
         </div>
-        <div class="search-box">
-            <input type="text" id="searchChats" placeholder="بحث أو بدء محادثة جديدة">
-        </div>
-        <div class="chats-list" id="chatsList"></div>
-        <div class="p-4 border-t border-[#2a2f36]">
-            <button onclick="newChat()" class="w-full bg-[#25d366] text-white p-2 rounded-full">محادثة جديدة</button>
-        </div>
-    </div>
 
-    <div class="chat-area" id="chatArea">
-        <div class="flex items-center justify-center h-full text-gray-500">اختر محادثة للبدء</div>
-    </div>
-
-    <!-- لوحة المكالمة -->
-    <div id="callPanel" class="call-panel">
-        <video id="localVideo" autoplay playsinline muted style="width: 100%; height: 100%; object-fit: cover;"></video>
-        <video id="remoteVideo" autoplay playsinline style="position: absolute; width: 120px; height: 160px; bottom: 100px; right: 20px; border-radius: 12px; object-fit: cover;"></video>
-        <div class="call-controls">
-            <button class="call-control" onclick="toggleMicrophone()"><i class="fas fa-microphone"></i></button>
-            <button class="call-control" onclick="toggleCamera()"><i class="fas fa-video"></i></button>
-            <button class="call-control call-end" onclick="endCall()"><i class="fas fa-phone-slash"></i></button>
+        <!-- Chat List -->
+        <div class="chat-list">
+            <div class="chat-list-header">
+                <input type="text" id="searchChats" class="search-input" placeholder="بحث عن محادثة..." onkeyup="searchChats()">
+            </div>
+            <div id="chatsList" style="flex: 1; overflow-y: auto;">
+                <div class="loading"><div class="spinner"></div><span>جاري التحميل...</span></div>
+            </div>
         </div>
-    </div>
 
-    <!-- لوحة الملف الشخصي -->
-    <div id="profilePanel" class="fixed inset-0 bg-black/80 z-[600] hidden flex items-center justify-center">
-        <div class="bg-[#1e2a32] rounded-2xl p-6 w-80 text-center">
-            <div class="profile-avatar w-24 h-24 mx-auto mb-4" id="profileAvatarLarge">👤</div>
-            <h3 id="profileNameLarge" class="text-xl font-bold"></h3>
-            <p id="profileStatus" class="text-gray-400 text-sm mt-1"></p>
-            <button onclick="closeProfile()" class="mt-4 bg-[#25d366] px-4 py-2 rounded-full">إغلاق</button>
+        <!-- Main Chat -->
+        <div class="chat-main">
+            <div id="chatHeader" class="chat-header" style="display: none;">
+                <div class="chat-header-avatar" id="chatHeaderAvatar"></div>
+                <div class="chat-header-info">
+                    <h3 id="chatHeaderName"></h3>
+                    <span class="chat-header-status" id="chatHeaderStatus"></span>
+                </div>
+                <div class="chat-actions">
+                    <i class="fas fa-phone" onclick="startCall('audio')" id="callAudioBtn"></i>
+                    <i class="fas fa-video" onclick="startCall('video')" id="callVideoBtn"></i>
+                    <i class="fas fa-ellipsis-v"></i>
+                </div>
+            </div>
+            <div id="messagesArea" class="messages-area">
+                <div class="loading"><div class="spinner"></div><span>💬 اختر محادثة للبدء</span></div>
+            </div>
+            <div id="chatInputArea" class="chat-input-area" style="display: none;">
+                <button onclick="document.getElementById('fileInput').click()"><i class="fas fa-paperclip"></i></button>
+                <input type="text" id="messageInput" placeholder="اكتب رسالة...">
+                <button id="recordBtn" onclick="startRecording()"><i class="fas fa-microphone"></i></button>
+                <button onclick="sendMessage()"><i class="fas fa-paper-plane"></i></button>
+                <input type="file" id="fileInput" accept="image/*,video/*,audio/*" style="display:none" onchange="sendFile()">
+            </div>
         </div>
     </div>
 </div>
+
+<!-- Search Modal -->
+<div id="searchModal" class="modal">
+    <div class="modal-content">
+        <h3 class="text-center text-xl font-bold mb-4">🔍 بحث عن مستخدمين</h3>
+        <div class="flex gap-2 mb-4">
+            <div class="flex-1 flex items-center bg-[#2a3942] rounded-full px-4">
+                <span class="text-[#8696a0]">@</span>
+                <input type="text" id="searchUsername" placeholder="اسم المستخدم" class="flex-1 p-3 bg-transparent text-white border-none focus:outline-none">
+            </div>
+            <button onclick="searchUsers()" class="bg-[#00a884] px-4 rounded-full">🔍</button>
+        </div>
+        <div id="searchResults" style="max-height: 400px; overflow-y: auto;"></div>
+        <button onclick="closeSearchModal()" class="w-full bg-[#2a3942] text-white py-3 rounded-full mt-4">إلغاء</button>
+    </div>
+</div>
+
+<!-- Profile Modal -->
+<div id="profileModal" class="modal">
+    <div class="modal-content">
+        <h3 class="text-center text-xl font-bold mb-4">👤 الملف الشخصي</h3>
+        <div class="flex justify-center mb-4">
+            <div id="profileAvatarLarge" class="w-24 h-24 rounded-full bg-[#00a884] flex items-center justify-center overflow-hidden">
+                <i class="fas fa-user fa-3x text-white"></i>
+            </div>
+        </div>
+        <input type="text" id="profileName" placeholder="الاسم" class="w-full p-3 rounded-full bg-[#2a3942] border-none text-white mb-3">
+        <input type="text" id="profileUsername" placeholder="اسم المستخدم" class="w-full p-3 rounded-full bg-[#2a3942] border-none text-white mb-3">
+        <textarea id="profileBio" placeholder="الحالة" rows="2" class="w-full p-3 rounded-2xl bg-[#2a3942] border-none text-white mb-3"></textarea>
+        <button onclick="saveProfile()" class="w-full bg-[#00a884] text-white py-3 rounded-full mb-2">💾 حفظ</button>
+        <button onclick="changeProfilePhoto()" class="w-full bg-[#2a3942] text-white py-3 rounded-full mb-2">📷 تغيير الصورة</button>
+        <button onclick="closeProfileModal()" class="w-full bg-[#2a3942] text-white py-3 rounded-full">إلغاء</button>
+    </div>
+</div>
+
+<!-- Call Modal -->
+<div id="callModal" class="modal">
+    <div class="modal-content" style="background: #0b141a;">
+        <div id="remoteVideo" style="width: 100%; height: 400px; background: #000; border-radius: 20px; overflow: hidden;"></div>
+        <div id="localVideo" style="position: absolute; bottom: 20px; right: 20px; width: 120px; height: 160px; background: #000; border-radius: 12px; overflow: hidden;"></div>
+        <div class="flex justify-center gap-6 mt-4">
+            <button onclick="toggleMute()" class="bg-[#2a3942] text-white p-4 rounded-full"><i class="fas fa-microphone fa-2x"></i></button>
+            <button onclick="toggleVideo()" class="bg-[#2a3942] text-white p-4 rounded-full"><i class="fas fa-video fa-2x"></i></button>
+            <button onclick="endCall()" class="bg-red-600 text-white p-4 rounded-full"><i class="fas fa-phone-slash fa-2x"></i></button>
+        </div>
+    </div>
+</div>
+
+<!-- Image Modal -->
+<div id="imageModal" style="position:fixed; inset:0; background:rgba(0,0,0,0.9); z-index:2000; display:none; align-items:center; justify-content:center; cursor:pointer;" onclick="closeImageModal()">
+    <img id="modalImage" style="max-width:90%; max-height:90%; border-radius:16px;">
+</div>
+
+<div id="customToast"></div>
 
 <script type="module" src="firebase-config.js"></script>
 <script type="module" src="script.js"></script>

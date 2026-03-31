@@ -18,8 +18,6 @@
     </script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/vanilla-tilt@1.8.0/dist/vanilla-tilt.min.js"></script>
     <script src="https://download.agora.io/sdk/release/AgoraRTC_N-4.22.0.js"></script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -40,6 +38,7 @@
         body.light-mode .glass-card { background: rgba(255,255,255,0.5); border-color: rgba(0,0,0,0.05); }
         body.light-mode .message.received .message-bubble { background: rgba(0,0,0,0.05); color: #000; }
         body.light-mode .chat-input-area input { background: rgba(0,0,0,0.05); color: #000; }
+        body.light-mode .search-bar input { background: rgba(0,0,0,0.05); color: #000; }
         
         ::-webkit-scrollbar { width: 4px; }
         ::-webkit-scrollbar-track { background: transparent; }
@@ -64,10 +63,13 @@
         #mainApp { display: none; width: 100%; height: 100%; position: relative; z-index: 1; }
         .app-container { display: flex; width: 100%; height: 100%; gap: 12px; padding: 12px; }
 
-        /* Sidebar - Modern */
+        /* Sidebar */
         .chat-sidebar { width: 360px; background: rgba(0,0,0,0.3); backdrop-filter: blur(20px); border-radius: 32px; border: 1px solid rgba(255,255,255,0.1); display: flex; flex-direction: column; height: 100%; overflow: hidden; }
         .sidebar-header { padding: 20px; border-bottom: 1px solid rgba(255,255,255,0.1); display: flex; align-items: center; justify-content: space-between; }
         .sidebar-header h2 { font-size: 28px; font-weight: 800; background: linear-gradient(135deg, #a855f7, #3b82f6); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+        .sidebar-avatar { width: 48px; height: 48px; border-radius: 50%; background: linear-gradient(135deg, #a855f7, #3b82f6); display: flex; align-items: center; justify-content: center; cursor: pointer; transition: 0.3s; }
+        .sidebar-avatar:hover { transform: scale(1.05); }
+        .sidebar-avatar img { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; }
         .search-bar { padding: 16px; }
         .search-bar input { width: 100%; padding: 12px 18px; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.15); border-radius: 40px; color: #fff; font-size: 14px; transition: 0.3s; }
         .search-bar input:focus { border-color: #a855f7; outline: none; background: rgba(255,255,255,0.15); }
@@ -83,7 +85,7 @@
         .chat-last-message { font-size: 12px; color: rgba(255,255,255,0.6); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         .unread-badge { background: linear-gradient(135deg, #a855f7, #3b82f6); color: #fff; font-size: 10px; border-radius: 50%; min-width: 20px; height: 20px; display: inline-flex; align-items: center; justify-content: center; }
 
-        /* Main Chat - Modern */
+        /* Main Chat */
         .chat-main { flex: 1; background: rgba(0,0,0,0.2); backdrop-filter: blur(20px); border-radius: 32px; border: 1px solid rgba(255,255,255,0.1); display: flex; flex-direction: column; overflow: hidden; }
         .chat-header { padding: 16px 24px; border-bottom: 1px solid rgba(255,255,255,0.1); display: flex; align-items: center; gap: 16px; }
         .chat-header-avatar { width: 48px; height: 48px; border-radius: 50%; background: linear-gradient(135deg, #a855f7, #3b82f6); overflow: hidden; cursor: pointer; transition: 0.3s; }
@@ -94,7 +96,7 @@
         .chat-action-btn { background: rgba(255,255,255,0.1); border: none; color: #fff; font-size: 20px; cursor: pointer; padding: 10px; border-radius: 50%; transition: 0.3s; }
         .chat-action-btn:hover { background: linear-gradient(135deg, #a855f7, #3b82f6); transform: scale(1.1); }
 
-        /* Messages - Modern */
+        /* Messages */
         .messages-area { flex: 1; overflow-y: auto; padding: 24px; display: flex; flex-direction: column; gap: 12px; }
         .message { display: flex; max-width: 75%; animation: messageIn 0.3s ease; }
         @keyframes messageIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
@@ -103,22 +105,34 @@
         .message-bubble { padding: 12px 16px; border-radius: 24px; font-size: 14px; line-height: 1.4; backdrop-filter: blur(10px); transition: 0.2s; }
         .message.sent .message-bubble { background: linear-gradient(135deg, #a855f7, #3b82f6); color: #fff; border-bottom-right-radius: 4px; }
         .message.received .message-bubble { background: rgba(255,255,255,0.1); color: #fff; border-bottom-left-radius: 4px; }
-        .message-media { margin-top: 8px; border-radius: 16px; overflow: hidden; max-width: 280px; }
-        .message-media img { width: 100%; border-radius: 16px; cursor: pointer; transition: 0.3s; }
+        .message-media { margin-top: 8px; border-radius: 16px; overflow: hidden; max-width: 280px; cursor: pointer; }
+        .message-media img { width: 100%; border-radius: 16px; transition: 0.3s; }
         .message-media img:hover { transform: scale(1.02); }
+        .message-audio audio { height: 36px; border-radius: 40px; }
         .message-time { font-size: 10px; color: rgba(255,255,255,0.5); margin-top: 4px; }
 
-        /* Input Area - Modern */
+        /* Input Area */
         .chat-input-area { padding: 20px 24px; border-top: 1px solid rgba(255,255,255,0.1); display: flex; gap: 12px; align-items: center; }
         .chat-input-area input { flex: 1; padding: 14px 20px; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.15); border-radius: 40px; color: #fff; font-size: 14px; transition: 0.3s; }
         .chat-input-area input:focus { border-color: #a855f7; outline: none; background: rgba(255,255,255,0.15); }
         .chat-input-area button { background: rgba(255,255,255,0.1); border: none; color: #fff; font-size: 22px; cursor: pointer; padding: 10px; border-radius: 50%; transition: 0.3s; }
         .chat-input-area button:hover { background: linear-gradient(135deg, #a855f7, #3b82f6); transform: scale(1.1); }
 
-        /* Modal - Modern */
+        /* Modals */
         .modal { position: fixed; inset: 0; background: rgba(0,0,0,0.6); backdrop-filter: blur(20px); z-index: 1000; display: flex; align-items: center; justify-content: center; opacity: 0; visibility: hidden; transition: 0.3s; }
         .modal.open { opacity: 1; visibility: visible; }
         .modal-content { background: rgba(0,0,0,0.5); backdrop-filter: blur(20px); border-radius: 40px; padding: 32px; width: 90%; max-width: 520px; border: 1px solid rgba(255,255,255,0.2); max-height: 85vh; overflow-y: auto; animation: fadeInUp 0.4s ease; }
+        .user-item { display: flex; align-items: center; gap: 12px; padding: 12px; cursor: pointer; transition: 0.3s; border-radius: 20px; margin-bottom: 8px; }
+        .user-item:hover { background: rgba(255,255,255,0.1); }
+        .user-avatar { width: 48px; height: 48px; border-radius: 50%; background: linear-gradient(135deg, #a855f7, #3b82f6); overflow: hidden; }
+        .user-avatar img { width: 100%; height: 100%; object-fit: cover; }
+        .user-info { flex: 1; }
+        .user-name { font-weight: 600; margin-bottom: 4px; }
+        .user-username { font-size: 12px; color: rgba(255,255,255,0.6); }
+
+        /* Call Modal */
+        .remote-video { width: 100%; height: 400px; background: #000; border-radius: 24px; overflow: hidden; }
+        .local-video { position: absolute; bottom: 20px; right: 20px; width: 120px; height: 160px; background: #000; border-radius: 12px; overflow: hidden; }
 
         .loading { text-align: center; padding: 40px; color: rgba(255,255,255,0.6); }
         .spinner { width: 40px; height: 40px; border: 2px solid rgba(168,85,247,0.2); border-top-color: #a855f7; border-radius: 50%; animation: spin 0.8s linear infinite; margin: 0 auto 12px; }
@@ -158,22 +172,40 @@
     <div id="mainApp">
         <div class="app-container">
             <div class="chat-sidebar" id="chatSidebar">
-                <div class="sidebar-header"><h2>NexTalk</h2><div class="sidebar-avatar" onclick="openProfile()"><i class="fas fa-user-circle fa-2x" style="color:#a855f7;"></i></div></div>
-                <div class="search-bar"><input type="text" id="searchChats" placeholder="بحث..." onkeyup="searchChats()"></div>
-                <div class="chats-list" id="chatsList"><div class="loading"><div class="spinner"></div><span>تحميل...</span></div></div>
-                <div style="padding: 16px;"><button onclick="openNewChatModal()" class="w-full bg-gradient-to-r from-purple-500 to-blue-500 text-white py-3 rounded-full text-sm font-medium">+ محادثة جديدة</button></div>
+                <div class="sidebar-header">
+                    <h2>NexTalk</h2>
+                    <div class="sidebar-avatar" id="sidebarAvatar" onclick="openProfile()">
+                        <i class="fas fa-user fa-2x" style="color:white;"></i>
+                    </div>
+                </div>
+                <div class="search-bar">
+                    <input type="text" id="searchUsers" placeholder="🔍 بحث عن مستخدمين..." onkeyup="searchUsers()">
+                </div>
+                <div class="chats-list" id="chatsList">
+                    <div class="loading"><div class="spinner"></div><span>تحميل المحادثات...</span></div>
+                </div>
+                <div style="padding: 16px;">
+                    <button onclick="openNewChatModal()" class="w-full bg-gradient-to-r from-purple-500 to-blue-500 text-white py-3 rounded-full text-sm font-medium">
+                        <i class="fas fa-plus"></i> محادثة جديدة
+                    </button>
+                </div>
             </div>
             <div class="chat-main">
                 <div class="chat-header" id="chatHeader" style="display:none;">
-                    <div class="chat-header-avatar" id="chatHeaderAvatar"></div>
-                    <div class="chat-header-info"><h3 id="chatHeaderName"></h3><span class="chat-header-status" id="chatHeaderStatus"></span></div>
+                    <div class="chat-header-avatar" id="chatHeaderAvatar" onclick="openChatProfile()"></div>
+                    <div class="chat-header-info">
+                        <h3 id="chatHeaderName"></h3>
+                        <span class="chat-header-status" id="chatHeaderStatus"></span>
+                    </div>
                     <div class="chat-actions">
-                        <button class="chat-action-btn" onclick="startCall('audio')" id="callAudioBtn" style="display:none;"><i class="fas fa-phone"></i></button>
-                        <button class="chat-action-btn" onclick="startCall('video')" id="callVideoBtn" style="display:none;"><i class="fas fa-video"></i></button>
-                        <button class="chat-action-btn" onclick="openChatSettings()"><i class="fas fa-ellipsis-h"></i></button>
+                        <button class="chat-action-btn" onclick="startCall('audio')" id="callAudioBtn"><i class="fas fa-phone"></i></button>
+                        <button class="chat-action-btn" onclick="startCall('video')" id="callVideoBtn"><i class="fas fa-video"></i></button>
+                        <button class="chat-action-btn" onclick="openChatInfo()"><i class="fas fa-info-circle"></i></button>
                     </div>
                 </div>
-                <div class="messages-area" id="messagesArea"><div class="loading"><div class="spinner"></div><span>اختر محادثة</span></div></div>
+                <div class="messages-area" id="messagesArea">
+                    <div class="loading"><div class="spinner"></div><span>اختر محادثة للبدء</span></div>
+                </div>
                 <div class="chat-input-area" id="chatInputArea" style="display:none;">
                     <button onclick="document.getElementById('fileInput').click()"><i class="fas fa-paperclip"></i></button>
                     <input type="text" id="messageInput" placeholder="اكتب رسالة...">
@@ -185,13 +217,57 @@
         </div>
     </div>
 
-    <div id="profileModal" class="modal"><div class="modal-content"><h3 style="text-align:center;margin-bottom:24px;">الملف الشخصي</h3><div id="profileAvatarLarge" style="width:100px;height:100px;border-radius:50%;margin:0 auto 16px;background:linear-gradient(135deg,#a855f7,#3b82f6);"></div><input type="text" id="profileName" placeholder="الاسم" style="width:100%;padding:12px;background:rgba(255,255,255,0.1);border-radius:40px;border:none;color:#fff;margin-bottom:12px;"><textarea id="profileBio" placeholder="السيرة" rows="2" style="width:100%;padding:12px;background:rgba(255,255,255,0.1);border-radius:20px;border:none;color:#fff;"></textarea><button onclick="saveProfile()" class="w-full bg-gradient-to-r from-purple-500 to-blue-500 text-white py-3 rounded-full mt-4">حفظ</button><button onclick="logout()" class="w-full bg-red-500 text-white py-3 rounded-full mt-2">تسجيل خروج</button></div></div>
-    <div id="chatSettingsModal" class="modal"><div class="modal-content"><h3>الإعدادات</h3><button onclick="clearChat()" class="w-full bg-red-500 text-white py-3 rounded-full mt-2">مسح المحادثة</button><button onclick="blockUser()" class="w-full bg-red-500 text-white py-3 rounded-full mt-2">حظر</button><button onclick="closeChatSettings()" class="w-full bg-gray-600 text-white py-3 rounded-full mt-4">إلغاء</button></div></div>
-    <div id="callModal" class="modal"><div class="modal-content" style="text-align:center;"><div id="remoteVideo" style="width:100%;height:300px;background:#000;border-radius:20px;"></div><div id="localVideo" style="width:100px;height:120px;position:absolute;bottom:20px;right:20px;background:#000;border-radius:12px;"></div><div style="display:flex;gap:20px;justify-content:center;margin-top:20px;"><button onclick="endCall()" class="bg-red-500 text-white p-4 rounded-full"><i class="fas fa-phone-slash fa-2x"></i></button></div></div></div>
-    <div id="imageModal" style="position:fixed;inset:0;background:rgba(0,0,0,0.9);z-index:2000;display:none;align-items:center;justify-content:center;" onclick="closeImageModal()"><img id="modalImage" style="max-width:90%;max-height:90%;border-radius:20px;"></div>
+    <!-- New Chat Modal -->
+    <div id="newChatModal" class="modal">
+        <div class="modal-content">
+            <h3 class="text-center text-xl font-bold mb-4">🔍 بحث عن مستخدمين</h3>
+            <input type="text" id="searchUserInput" placeholder="اسم المستخدم أو البريد..." onkeyup="searchUsersList()" class="w-full p-3 rounded-full bg-white/10 border border-white/20 text-white mb-4">
+            <div id="searchResultsList" style="max-height: 400px; overflow-y: auto;"></div>
+            <button onclick="closeNewChatModal()" class="w-full bg-gray-600 text-white py-3 rounded-full mt-4">إلغاء</button>
+        </div>
+    </div>
+
+    <!-- Profile Modal -->
+    <div id="profileModal" class="modal">
+        <div class="modal-content">
+            <h3 class="text-center text-xl font-bold mb-4">👤 الملف الشخصي</h3>
+            <div id="profileAvatarLarge" class="w-24 h-24 rounded-full mx-auto mb-4 bg-gradient-to-r from-purple-500 to-blue-500 flex items-center justify-center overflow-hidden">
+                <i class="fas fa-user fa-3x text-white"></i>
+            </div>
+            <input type="text" id="profileName" placeholder="الاسم" class="w-full p-3 rounded-full bg-white/10 border border-white/20 text-white mb-3">
+            <input type="text" id="profileUsername" placeholder="اسم المستخدم" class="w-full p-3 rounded-full bg-white/10 border border-white/20 text-white mb-3">
+            <textarea id="profileBio" placeholder="السيرة الذاتية" rows="3" class="w-full p-3 rounded-2xl bg-white/10 border border-white/20 text-white mb-3"></textarea>
+            <button onclick="saveProfile()" class="w-full bg-gradient-to-r from-purple-500 to-blue-500 text-white py-3 rounded-full mb-2">💾 حفظ</button>
+            <button onclick="changeProfilePhoto()" class="w-full bg-white/10 text-white py-3 rounded-full mb-2">📷 تغيير الصورة</button>
+            <button onclick="logout()" class="w-full bg-red-500 text-white py-3 rounded-full">🚪 تسجيل خروج</button>
+            <button onclick="closeProfileModal()" class="w-full bg-gray-600 text-white py-3 rounded-full mt-2">إلغاء</button>
+        </div>
+    </div>
+
+    <!-- Call Modal -->
+    <div id="callModal" class="modal">
+        <div class="modal-content" style="background: rgba(0,0,0,0.9);">
+            <div id="remoteVideo" class="remote-video"></div>
+            <div id="localVideo" class="local-video"></div>
+            <div class="flex justify-center gap-4 mt-4">
+                <button onclick="toggleMute()" class="bg-gray-600 text-white p-4 rounded-full"><i class="fas fa-microphone fa-2x"></i></button>
+                <button onclick="toggleVideo()" class="bg-gray-600 text-white p-4 rounded-full"><i class="fas fa-video fa-2x"></i></button>
+                <button onclick="endCall()" class="bg-red-500 text-white p-4 rounded-full"><i class="fas fa-phone-slash fa-2x"></i></button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Image Modal -->
+    <div id="imageModal" style="position:fixed; inset:0; background:rgba(0,0,0,0.9); z-index:2000; display:none; align-items:center; justify-content:center; cursor:pointer;" onclick="closeImageModal()">
+        <img id="modalImage" style="max-width:90%; max-height:90%; border-radius:20px;">
+        <button class="absolute top-4 right-4 bg-white/20 text-white p-2 rounded-full">&times;</button>
+    </div>
+
+    <div id="customToast"></div>
 
     <script type="module" src="firebase-config.js"></script>
     <script type="module" src="script.js"></script>
+    
     <script>
         // 3D Animated Background
         const scene = new THREE.Scene();

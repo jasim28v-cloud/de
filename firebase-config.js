@@ -1,17 +1,6 @@
-import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.0/firebase-app.js";
-import { 
-  getAuth, 
-  createUserWithEmailAndPassword, 
-  signInWithEmailAndPassword, 
-  signOut, 
-  onAuthStateChanged 
-} from "https://www.gstatic.com/firebasejs/10.7.0/firebase-auth.js";
-import { 
-  getFirestore, 
-  collection, doc, setDoc, getDoc, getDocs, updateDoc, deleteDoc,
-  query, where, orderBy, limit, onSnapshot, addDoc, serverTimestamp,
-  arrayUnion, arrayRemove 
-} from "https://www.gstatic.com/firebasejs/10.7.0/firebase-firestore.js";
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+import { getAuth } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+import { getFirestore, collection, doc, setDoc, getDoc, getDocs, updateDoc, query, where, orderBy, limit, onSnapshot, addDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
 const firebaseConfig = {
     apiKey: "AIzaSyAxtEkrEgl0C9djPkxKKX-sENtOzPEbHB8",
@@ -26,24 +15,13 @@ const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 export const db = getFirestore(app);
 
-// ============ تصدير دوال المصادقة (الأهم) ============
-export { 
-  createUserWithEmailAndPassword, 
-  signInWithEmailAndPassword, 
-  signOut, 
-  onAuthStateChanged 
-};
-
-// ============ تصدير دوال Firestore ============
 export {
-    collection, doc, setDoc, getDoc, getDocs, updateDoc, deleteDoc,
-    query, where, orderBy, limit, onSnapshot, addDoc, serverTimestamp,
-    arrayUnion, arrayRemove
+    collection, doc, setDoc, getDoc, getDocs, updateDoc,
+    query, where, orderBy, limit, onSnapshot, addDoc, serverTimestamp
 };
 
-// ============ إعدادات الخدمات ============
 export const CLOUD_NAME = 'daemk3hut';
 export const UPLOAD_PRESET = 'fok2_k';
 export const AGORA_APP_ID = '929646610d814d529a06c4081c81325f';
 
-console.log('✅ VibeChat Ready - Firebase + Firestore');
+console.log('✅ VibeChat Ready');

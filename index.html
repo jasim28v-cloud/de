@@ -2,27 +2,167 @@
 <html lang="ar" dir="rtl">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>VibeChat | الدردشة والاتصال</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>VibeChat | دردشة ذكية واتصال</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600&family=Outfit:wght@500;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Outfit:wght@500;600;700&display=swap" rel="stylesheet">
     <script src="https://unpkg.com/lucide@latest"></script>
     <style>
-        body { font-family: 'Inter', sans-serif; background-color: #0b141a; color: #e9edef; }
-        .glass { background: rgba(32, 44, 51, 0.8); backdrop-filter: blur(12px); border: 1px solid rgba(255,255,255,0.05); }
-        .chat-bg { background-image: url('https://user-images.githubusercontent.com/15075759/28719144-86dc0f70-73b1-11e7-911d-60d70fcded21.png'); opacity: 0.06; }
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #0b141a;
+            color: #e9edef;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        /* Glassmorphism Effect */
+        .glass {
+            background: rgba(32, 44, 51, 0.7);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .glass-card {
+            background: rgba(32, 44, 51, 0.5);
+            backdrop-filter: blur(8px);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            transition: all 0.3s ease;
+        }
+
+        .glass-card:hover {
+            background: rgba(42, 57, 66, 0.6);
+            transform: translateY(-2px);
+        }
+
+        /* Chat Background Pattern */
+        .chat-bg {
+            background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 1000" opacity="0.03"><path fill="%238696a0" d="M0,0 L1000,0 L1000,1000 L0,1000 Z M0,0 L1000,1000 M1000,0 L0,1000"/></svg>');
+            background-repeat: repeat;
+            opacity: 0.5;
+        }
+
+        /* Scrollbar */
+        ::-webkit-scrollbar {
+            width: 4px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #202c33;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #3b4a54;
+            border-radius: 4px;
+        }
+
+        /* Animations */
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes slideIn {
+            from { opacity: 0; transform: translateX(-20px); }
+            to { opacity: 1; transform: translateX(0); }
+        }
+        @keyframes messageIn {
+            from { opacity: 0; transform: translateY(5px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .animate-fade-in { animation: fadeIn 0.3s ease-out; }
+        .animate-slide-in { animation: slideIn 0.3s ease-out; }
+        .message-animate { animation: messageIn 0.2s ease-out; }
+
+        /* Message Bubbles */
+        .message-sent {
+            background: #005c4b;
+            color: #e9edef;
+            border-bottom-right-radius: 4px;
+        }
+        .message-received {
+            background: #202c33;
+            color: #e9edef;
+            border-bottom-left-radius: 4px;
+        }
+
+        /* Loading Spinner */
+        .spinner {
+            width: 32px;
+            height: 32px;
+            border: 2px solid rgba(0, 168, 132, 0.2);
+            border-top-color: #00a884;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        /* Modal */
+        .modal {
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.8);
+            backdrop-filter: blur(12px);
+            z-index: 1000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            opacity: 0;
+            visibility: hidden;
+            transition: 0.2s;
+        }
+        .modal.open {
+            opacity: 1;
+            visibility: visible;
+        }
+        .modal-content {
+            background: #202c33;
+            border-radius: 28px;
+            padding: 32px;
+            width: 90%;
+            max-width: 460px;
+        }
+
+        /* Toast */
+        .toast {
+            position: fixed;
+            bottom: 100px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #2a3942;
+            color: #e9edef;
+            padding: 10px 20px;
+            border-radius: 24px;
+            font-size: 13px;
+            z-index: 1200;
+            opacity: 0;
+            transition: 0.2s;
+            pointer-events: none;
+            white-space: nowrap;
+        }
     </style>
 </head>
 <body class="h-screen overflow-hidden flex">
+
     <!-- Sidebar Icons -->
     <div class="w-16 glass flex flex-col items-center py-6 gap-8 border-l border-white/5 z-20">
-        <div id="userAvatar" class="w-10 h-10 rounded-full bg-[#00a884] flex items-center justify-center font-bold text-white">V</div>
-        <div class="flex flex-col gap-6 text-gray-400">
-            <i data-lucide="message-square" class="cursor-pointer hover:text-[#00a884]"></i>
-            <i data-lucide="users" class="cursor-pointer hover:text-[#00a884]"></i>
-            <i data-lucide="settings" class="cursor-pointer hover:text-[#00a884]"></i>
+        <div id="userAvatar" class="w-10 h-10 rounded-full bg-[#00a884] flex items-center justify-center font-bold text-white cursor-pointer transition hover:scale-105">
+            <i data-lucide="user" class="w-5 h-5"></i>
         </div>
-        <div class="mt-auto"><i data-lucide="log-out" id="logoutBtn" class="text-red-400 cursor-pointer"></i></div>
+        <div class="flex flex-col gap-6 text-gray-400">
+            <i data-lucide="message-square" id="chatsIcon" class="cursor-pointer hover:text-[#00a884] transition w-5 h-5"></i>
+            <i data-lucide="users" id="searchIcon" class="cursor-pointer hover:text-[#00a884] transition w-5 h-5"></i>
+            <i data-lucide="settings" id="settingsIcon" class="cursor-pointer hover:text-[#00a884] transition w-5 h-5"></i>
+        </div>
+        <div class="mt-auto">
+            <i data-lucide="log-out" id="logoutBtn" class="text-red-400 cursor-pointer hover:text-red-500 transition w-5 h-5"></i>
+        </div>
     </div>
 
     <!-- Chat List -->
@@ -30,12 +170,14 @@
         <div class="p-4">
             <h1 class="text-2xl font-bold font-display mb-4">المحادثات</h1>
             <div class="relative">
-                <i data-lucide="search" class="absolute right-3 top-2.5 text-gray-500 w-4"></i>
-                <input id="userSearch" type="text" placeholder="بحث بالمعرف @username" class="w-full bg-[#202c33] rounded-xl py-2 pr-10 pl-4 text-sm focus:outline-none focus:ring-1 focus:ring-[#00a884]">
+                <i data-lucide="search" class="absolute right-3 top-2.5 text-gray-500 w-4 h-4"></i>
+                <input id="userSearch" type="text" placeholder="بحث بالمعرف @username" class="w-full bg-[#202c33] rounded-xl py-2 pr-10 pl-4 text-sm focus:outline-none focus:ring-1 focus:ring-[#00a884] transition">
             </div>
         </div>
         <div id="chatList" class="flex-1 overflow-y-auto">
-            <!-- المحادثات تظهر هنا -->
+            <div class="flex justify-center items-center h-32">
+                <div class="spinner"></div>
+            </div>
         </div>
     </div>
 
@@ -43,48 +185,103 @@
     <div class="flex-1 flex flex-col relative">
         <div class="chat-bg absolute inset-0"></div>
         
-        <!-- Header -->
+        <!-- Chat Header -->
         <div id="chatHeader" class="h-16 glass flex items-center px-6 justify-between z-10">
             <div class="flex items-center gap-4">
-                <div id="activeAvatar" class="w-10 h-10 rounded-full bg-[#202c33]"></div>
+                <div id="activeAvatar" class="w-10 h-10 rounded-full bg-[#202c33] flex items-center justify-center">
+                    <i data-lucide="user" class="w-5 h-5 text-gray-400"></i>
+                </div>
                 <div>
-                    <h2 id="activeName" class="font-bold">اختر محادثة</h2>
-                    <p id="activeStatus" class="text-xs text-[#00a884]"></p>
+                    <h2 id="activeName" class="font-bold">VibeChat</h2>
+                    <p id="activeStatus" class="text-xs text-[#00a884]">اختر محادثة للبدء</p>
                 </div>
             </div>
             <div class="flex gap-6 text-gray-400">
-                <i data-lucide="phone" id="audioCallBtn" class="cursor-pointer hover:text-[#00a884]"></i>
-                <i data-lucide="video" id="videoCallBtn" class="cursor-pointer hover:text-[#00a884]"></i>
-                <i data-lucide="more-vertical" class="cursor-pointer"></i>
+                <i data-lucide="phone" id="audioCallBtn" class="cursor-pointer hover:text-[#00a884] transition w-5 h-5"></i>
+                <i data-lucide="video" id="videoCallBtn" class="cursor-pointer hover:text-[#00a884] transition w-5 h-5"></i>
+                <i data-lucide="more-vertical" class="cursor-pointer hover:text-[#00a884] transition w-5 h-5"></i>
             </div>
         </div>
 
-        <!-- Messages -->
-        <div id="messageArea" class="flex-1 overflow-y-auto p-6 flex flex-col gap-3 z-10"></div>
+        <!-- Messages Area -->
+        <div id="messageArea" class="flex-1 overflow-y-auto p-6 flex flex-col gap-3 z-10">
+            <div class="flex justify-center items-center h-32">
+                <div class="text-gray-500 text-center">
+                    <i data-lucide="message-circle" class="w-12 h-12 mx-auto mb-2 opacity-50"></i>
+                    <p>اختر محادثة لبدء المراسلة</p>
+                </div>
+            </div>
+        </div>
 
-        <!-- Input -->
+        <!-- Input Area -->
         <div class="p-4 glass z-10 flex items-center gap-4">
-            <i data-lucide="plus" id="uploadBtn" class="text-gray-400 cursor-pointer hover:text-white"></i>
-            <input id="messageInput" type="text" placeholder="اكتب رسالة..." class="flex-1 bg-[#2a3942] rounded-xl py-3 px-6 focus:outline-none">
+            <i data-lucide="paperclip" id="uploadBtn" class="text-gray-400 cursor-pointer hover:text-[#00a884] transition w-5 h-5"></i>
+            <input id="messageInput" type="text" placeholder="اكتب رسالة..." class="flex-1 bg-[#2a3942] rounded-xl py-3 px-6 focus:outline-none focus:ring-1 focus:ring-[#00a884] transition">
             <button id="sendBtn" class="bg-[#00a884] p-3 rounded-full text-white hover:scale-105 transition-transform">
                 <i data-lucide="send" class="w-5 h-5"></i>
             </button>
         </div>
     </div>
 
-    <!-- Call Overlay -->
-    <div id="callOverlay" class="hidden fixed inset-0 bg-black/90 z-50 flex flex-col items-center justify-center">
-        <div id="remoteVideo" class="w-full h-full absolute inset-0"></div>
-        <div id="localVideo" class="w-48 h-64 absolute bottom-10 left-10 glass rounded-2xl overflow-hidden border-2 border-[#00a884]"></div>
-        <button id="endCallBtn" class="absolute bottom-10 bg-red-500 p-4 rounded-full text-white z-50">
-            <i data-lucide="phone-off"></i>
-        </button>
+    <!-- Search Modal -->
+    <div id="searchModal" class="modal">
+        <div class="modal-content">
+            <h3 class="text-center text-xl font-bold mb-4">🔍 بحث عن مستخدمين</h3>
+            <div class="relative mb-4">
+                <i data-lucide="search" class="absolute right-3 top-2.5 text-gray-500 w-4 h-4"></i>
+                <input type="text" id="searchUsernameInput" placeholder="@username" class="w-full bg-[#2a3942] rounded-xl py-2 pr-10 pl-4 text-sm focus:outline-none focus:ring-1 focus:ring-[#00a884]">
+            </div>
+            <div id="searchResults" class="max-h-80 overflow-y-auto"></div>
+            <button id="closeSearchModal" class="w-full bg-[#2a3942] text-white py-3 rounded-full mt-4 hover:bg-[#3b4a54] transition">إلغاء</button>
+        </div>
     </div>
+
+    <!-- Profile Modal -->
+    <div id="profileModal" class="modal">
+        <div class="modal-content">
+            <h3 class="text-center text-xl font-bold mb-4">👤 الملف الشخصي</h3>
+            <div class="flex justify-center mb-4">
+                <div id="profileAvatarLarge" class="w-24 h-24 rounded-full bg-[#00a884] flex items-center justify-center overflow-hidden">
+                    <i data-lucide="user" class="w-12 h-12 text-white"></i>
+                </div>
+            </div>
+            <input type="text" id="profileName" placeholder="الاسم" class="w-full bg-[#2a3942] rounded-xl py-3 px-4 mb-3 focus:outline-none focus:ring-1 focus:ring-[#00a884]">
+            <input type="text" id="profileUsername" placeholder="اسم المستخدم" class="w-full bg-[#2a3942] rounded-xl py-3 px-4 mb-3 focus:outline-none focus:ring-1 focus:ring-[#00a884]">
+            <textarea id="profileBio" placeholder="الحالة" rows="2" class="w-full bg-[#2a3942] rounded-xl py-3 px-4 mb-3 focus:outline-none focus:ring-1 focus:ring-[#00a884] resize-none"></textarea>
+            <button id="saveProfileBtn" class="w-full bg-[#00a884] text-white py-3 rounded-full mb-2 hover:bg-[#008f6f] transition">💾 حفظ</button>
+            <button id="changePhotoBtn" class="w-full bg-[#2a3942] text-white py-3 rounded-full mb-2 hover:bg-[#3b4a54] transition">📷 تغيير الصورة</button>
+            <button id="closeProfileModal" class="w-full bg-[#2a3942] text-white py-3 rounded-full hover:bg-[#3b4a54] transition">إلغاء</button>
+        </div>
+    </div>
+
+    <!-- Call Overlay -->
+    <div id="callOverlay" class="hidden fixed inset-0 bg-black/95 z-50 flex flex-col items-center justify-center">
+        <div id="remoteVideo" class="w-full h-full absolute inset-0 bg-black"></div>
+        <div id="localVideo" class="w-48 h-64 absolute bottom-10 left-10 glass rounded-2xl overflow-hidden border-2 border-[#00a884]"></div>
+        <div class="absolute bottom-10 left-1/2 transform -translate-x-1/2 flex gap-6 z-50">
+            <button id="toggleMuteBtn" class="bg-[#2a3942] p-4 rounded-full text-white hover:bg-[#3b4a54] transition">
+                <i data-lucide="mic" class="w-6 h-6"></i>
+            </button>
+            <button id="toggleVideoBtn" class="bg-[#2a3942] p-4 rounded-full text-white hover:bg-[#3b4a54] transition">
+                <i data-lucide="video" class="w-6 h-6"></i>
+            </button>
+            <button id="endCallBtn" class="bg-red-500 p-4 rounded-full text-white hover:bg-red-600 transition">
+                <i data-lucide="phone-off" class="w-6 h-6"></i>
+            </button>
+        </div>
+    </div>
+
+    <div id="toast" class="toast"></div>
 
     <!-- Scripts -->
     <script src="https://download.agora.io/sdk/release/AgoraRTC_N.js"></script>
     <script src="https://upload-widget.cloudinary.com/global/all.js" type="text/javascript"></script>
     <script type="module" src="script.js"></script>
-    <script>lucide.createIcons();</script>
+    <script>
+        // Initialize Lucide icons
+        lucide.createIcons();
+        // Re-run lucide after dynamic content updates
+        window.refreshIcons = () => lucide.createIcons();
+    </script>
 </body>
 </html>

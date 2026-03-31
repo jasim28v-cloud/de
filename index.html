@@ -1,287 +1,280 @@
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>VibeChat | دردشة ذكية واتصال</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Outfit:wght@500;600;700&display=swap" rel="stylesheet">
-    <script src="https://unpkg.com/lucide@latest"></script>
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
-        body {
-            font-family: 'Inter', sans-serif;
-            background-color: #0b141a;
-            color: #e9edef;
-            height: 100vh;
-            overflow: hidden;
-        }
-
-        /* Glassmorphism Effect */
-        .glass {
-            background: rgba(32, 44, 51, 0.7);
-            backdrop-filter: blur(12px);
-            border: 1px solid rgba(255, 255, 255, 0.05);
-        }
-
-        .glass-card {
-            background: rgba(32, 44, 51, 0.5);
-            backdrop-filter: blur(8px);
-            border: 1px solid rgba(255, 255, 255, 0.05);
-            transition: all 0.3s ease;
-        }
-
-        .glass-card:hover {
-            background: rgba(42, 57, 66, 0.6);
-            transform: translateY(-2px);
-        }
-
-        /* Chat Background Pattern */
-        .chat-bg {
-            background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 1000" opacity="0.03"><path fill="%238696a0" d="M0,0 L1000,0 L1000,1000 L0,1000 Z M0,0 L1000,1000 M1000,0 L0,1000"/></svg>');
-            background-repeat: repeat;
-            opacity: 0.5;
-        }
-
-        /* Scrollbar */
-        ::-webkit-scrollbar {
-            width: 4px;
-        }
-        ::-webkit-scrollbar-track {
-            background: #202c33;
-        }
-        ::-webkit-scrollbar-thumb {
-            background: #3b4a54;
-            border-radius: 4px;
-        }
-
-        /* Animations */
-        @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(10px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-        @keyframes slideIn {
-            from { opacity: 0; transform: translateX(-20px); }
-            to { opacity: 1; transform: translateX(0); }
-        }
-        @keyframes messageIn {
-            from { opacity: 0; transform: translateY(5px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-
-        .animate-fade-in { animation: fadeIn 0.3s ease-out; }
-        .animate-slide-in { animation: slideIn 0.3s ease-out; }
-        .message-animate { animation: messageIn 0.2s ease-out; }
-
-        /* Message Bubbles */
-        .message-sent {
-            background: #005c4b;
-            color: #e9edef;
-            border-bottom-right-radius: 4px;
-        }
-        .message-received {
-            background: #202c33;
-            color: #e9edef;
-            border-bottom-left-radius: 4px;
-        }
-
-        /* Loading Spinner */
-        .spinner {
-            width: 32px;
-            height: 32px;
-            border: 2px solid rgba(0, 168, 132, 0.2);
-            border-top-color: #00a884;
-            border-radius: 50%;
-            animation: spin 0.8s linear infinite;
-        }
-        @keyframes spin {
-            to { transform: rotate(360deg); }
-        }
-
-        /* Modal */
-        .modal {
-            position: fixed;
-            inset: 0;
-            background: rgba(0, 0, 0, 0.8);
-            backdrop-filter: blur(12px);
-            z-index: 1000;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            opacity: 0;
-            visibility: hidden;
-            transition: 0.2s;
-        }
-        .modal.open {
-            opacity: 1;
-            visibility: visible;
-        }
-        .modal-content {
-            background: #202c33;
-            border-radius: 28px;
-            padding: 32px;
-            width: 90%;
-            max-width: 460px;
-        }
-
-        /* Toast */
-        .toast {
-            position: fixed;
-            bottom: 100px;
-            left: 50%;
-            transform: translateX(-50%);
-            background: #2a3942;
-            color: #e9edef;
-            padding: 10px 20px;
-            border-radius: 24px;
-            font-size: 13px;
-            z-index: 1200;
-            opacity: 0;
-            transition: 0.2s;
-            pointer-events: none;
-            white-space: nowrap;
-        }
-    </style>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+  <title>VibeChat - تواصل عبر @المعرف</title>
+  <meta name="description" content="VibeChat - تطبيق محادثة احترافي يعتمد على البريد الإلكتروني والمعرف @Username" />
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Segoe UI', Tahoma, sans-serif; background: #0b141a; color: #e9edef; }
+    .glass { background: rgba(17, 27, 33, 0.8); backdrop-filter: blur(12px); }
+    .glass-strong { background: rgba(17, 27, 33, 0.95); backdrop-filter: blur(20px); }
+    .scrollbar-thin::-webkit-scrollbar { width: 4px; }
+    .scrollbar-thin::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 10px; }
+    @keyframes pulse-dot { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:0.7;transform:scale(1.2)} }
+    .pulse-dot { animation: pulse-dot 2s infinite; }
+    @keyframes typing { 0%,100%{opacity:0.3} 50%{opacity:1} }
+    .typing-dot { animation: typing 1.4s infinite; }
+    audio::-webkit-media-controls-panel { background: #2a3942; }
+    .message-bubble { transition: all 0.2s ease; }
+    .message-bubble:active { transform: scale(0.98); }
+    #attachment-preview { animation: slideUp 0.3s ease; }
+    @keyframes slideUp { from { transform: translateY(100%); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+  </style>
 </head>
-<body class="h-screen overflow-hidden flex">
+<body class="h-screen w-screen overflow-hidden">
 
-    <!-- Sidebar Icons -->
-    <div class="w-16 glass flex flex-col items-center py-6 gap-8 border-l border-white/5 z-20">
-        <div id="userAvatar" class="w-10 h-10 rounded-full bg-[#00a884] flex items-center justify-center font-bold text-white cursor-pointer transition hover:scale-105">
-            <i data-lucide="user" class="w-5 h-5"></i>
+  <!-- ============ AUTH SCREEN ============ -->
+  <div id="auth-screen" class="min-h-screen flex items-center justify-center p-4">
+    <div class="w-full max-w-md">
+      <div class="text-center mb-8">
+        <div class="w-16 h-16 rounded-2xl bg-[#00a884] mx-auto flex items-center justify-center mb-4">
+          <span class="text-white font-bold text-2xl">V</span>
         </div>
-        <div class="flex flex-col gap-6 text-gray-400">
-            <i data-lucide="message-square" id="chatsIcon" class="cursor-pointer hover:text-[#00a884] transition w-5 h-5"></i>
-            <i data-lucide="users" id="searchIcon" class="cursor-pointer hover:text-[#00a884] transition w-5 h-5"></i>
-            <i data-lucide="settings" id="settingsIcon" class="cursor-pointer hover:text-[#00a884] transition w-5 h-5"></i>
+        <h1 class="text-2xl font-bold text-white">VibeChat</h1>
+        <p class="text-sm text-gray-400 mt-1">تواصل عبر @المعرف</p>
+      </div>
+
+      <div class="glass-strong rounded-2xl p-6">
+        <div class="flex mb-6 bg-white/5 rounded-lg p-1">
+          <button onclick="showAuthTab('login')" id="tab-login" class="flex-1 py-2 rounded-md text-sm font-medium bg-[#00a884] text-white transition-all">تسجيل الدخول</button>
+          <button onclick="showAuthTab('register')" id="tab-register" class="flex-1 py-2 rounded-md text-sm font-medium text-gray-400 hover:text-white transition-all">حساب جديد</button>
         </div>
-        <div class="mt-auto">
-            <i data-lucide="log-out" id="logoutBtn" class="text-red-400 cursor-pointer hover:text-red-500 transition w-5 h-5"></i>
-        </div>
+
+        <p id="auth-error" class="hidden text-xs text-red-400 text-center bg-red-500/10 rounded-lg py-2 mb-4"></p>
+
+        <form id="login-form" onsubmit="handleLogin(event)" class="space-y-4">
+          <div class="relative">
+            <svg class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg>
+            <input id="login-email" type="email" placeholder="البريد الإلكتروني" required class="w-full h-11 rounded-lg bg-white/5 pl-4 pr-10 text-sm text-white placeholder:text-gray-500 outline-none focus:ring-1 focus:ring-[#00a884]/50 text-right" dir="rtl" />
+          </div>
+          <div class="relative">
+            <svg class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+            <input id="login-password" type="password" placeholder="كلمة المرور" required minlength="6" class="w-full h-11 rounded-lg bg-white/5 pl-4 pr-10 text-sm text-white placeholder:text-gray-500 outline-none focus:ring-1 focus:ring-[#00a884]/50 text-right" dir="rtl" />
+          </div>
+          <button id="login-btn" type="submit" class="w-full h-11 rounded-lg bg-[#00a884] hover:bg-[#00a884]/90 text-white font-medium text-sm flex items-center justify-center gap-2 transition-colors">تسجيل الدخول</button>
+        </form>
+
+        <form id="register-form" onsubmit="handleRegister(event)" class="space-y-4 hidden">
+          <div class="relative">
+            <input id="reg-displayname" type="text" placeholder="الاسم الظاهر" class="w-full h-11 rounded-lg bg-white/5 px-4 text-sm text-white placeholder:text-gray-500 outline-none focus:ring-1 focus:ring-[#00a884]/50 text-right" dir="rtl" />
+          </div>
+          <div class="relative">
+            <input id="reg-username" type="text" placeholder="اسم المستخدم (username)" required class="w-full h-11 rounded-lg bg-white/5 px-4 text-sm text-white placeholder:text-gray-500 outline-none focus:ring-1 focus:ring-[#00a884]/50 text-right" dir="rtl" />
+          </div>
+          <div class="relative">
+            <input id="reg-email" type="email" placeholder="البريد الإلكتروني" required class="w-full h-11 rounded-lg bg-white/5 px-4 text-sm text-white placeholder:text-gray-500 outline-none focus:ring-1 focus:ring-[#00a884]/50 text-right" dir="rtl" />
+          </div>
+          <div class="relative">
+            <input id="reg-password" type="password" placeholder="كلمة المرور" required minlength="6" class="w-full h-11 rounded-lg bg-white/5 px-4 text-sm text-white placeholder:text-gray-500 outline-none focus:ring-1 focus:ring-[#00a884]/50 text-right" dir="rtl" />
+          </div>
+          <button id="reg-btn" type="submit" class="w-full h-11 rounded-lg bg-[#00a884] hover:bg-[#00a884]/90 text-white font-medium text-sm flex items-center justify-center gap-2 transition-colors">إنشاء حساب</button>
+        </form>
+      </div>
     </div>
+  </div>
 
-    <!-- Chat List -->
-    <div class="w-80 glass flex flex-col border-l border-white/5 z-10">
-        <div class="p-4">
-            <h1 class="text-2xl font-bold font-display mb-4">المحادثات</h1>
+  <!-- ============ APP SCREEN ============ -->
+  <div id="app-screen" class="hidden h-screen w-screen flex overflow-hidden">
+
+    <div id="left-panel" class="flex h-full w-full sm:w-auto">
+
+      <div class="flex flex-col items-center justify-between h-full w-[68px] py-6 glass-strong border-r border-white/5">
+        <div class="flex flex-col items-center gap-1">
+          <div id="sidebar-avatar" class="w-10 h-10 rounded-xl bg-[#00a884] flex items-center justify-center mb-6 text-white font-bold text-lg overflow-hidden">V</div>
+          <button onclick="showPanel('chats')" class="w-12 h-12 flex items-center justify-center rounded-xl hover:bg-white/5 transition text-gray-400 hover:text-white" title="المحادثات">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+          </button>
+          <button onclick="showPanel('search')" class="w-12 h-12 flex items-center justify-center rounded-xl hover:bg-white/5 transition text-gray-400 hover:text-white" title="بحث">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+          </button>
+          <button onclick="showPanel('profile')" class="w-12 h-12 flex items-center justify-center rounded-xl hover:bg-white/5 transition text-gray-400 hover:text-white" title="الملف الشخصي">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+          </button>
+        </div>
+        <button onclick="handleLogoutSafe()" class="w-12 h-12 flex items-center justify-center rounded-xl text-gray-400 hover:text-red-400 transition" title="خروج">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+        </button>
+      </div>
+
+      <div class="flex-1 sm:w-[340px] h-full border-r border-white/5 flex flex-col">
+
+        <div id="chats-panel" class="flex flex-col h-full">
+          <div class="px-4 pt-4 pb-3">
+            <div class="flex items-center justify-between mb-3">
+              <h1 class="text-xl font-semibold text-white">المحادثات</h1>
+              <button onclick="showPanel('search')" class="w-9 h-9 rounded-lg bg-[#00a884]/10 hover:bg-[#00a884]/20 flex items-center justify-center transition">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#00a884" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+              </button>
+            </div>
+          </div>
+          <div id="chat-list" class="flex-1 overflow-y-auto scrollbar-thin px-2"></div>
+        </div>
+
+        <div id="search-panel" class="hidden flex flex-col h-full">
+          <div class="px-4 pt-4 pb-3">
+            <div class="flex items-center gap-3 mb-3">
+              <button onclick="showPanel('chats')" class="w-9 h-9 rounded-lg flex items-center justify-center text-gray-400 hover:text-white">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m15 18-6-6 6-6"/></svg>
+              </button>
+              <h2 class="text-lg font-semibold text-white">بحث عن مستخدم</h2>
+            </div>
             <div class="relative">
-                <i data-lucide="search" class="absolute right-3 top-2.5 text-gray-500 w-4 h-4"></i>
-                <input id="userSearch" type="text" placeholder="بحث بالمعرف @username" class="w-full bg-[#202c33] rounded-xl py-2 pr-10 pl-4 text-sm focus:outline-none focus:ring-1 focus:ring-[#00a884] transition">
+              <input id="user-search-input" type="text" placeholder="ابحث بـ @username..." oninput="handleUserSearch()" class="w-full h-10 rounded-lg bg-white/5 px-4 text-sm text-white placeholder:text-gray-500 outline-none focus:ring-1 focus:ring-[#00a884]/50 text-right" dir="rtl" />
             </div>
-        </div>
-        <div id="chatList" class="flex-1 overflow-y-auto">
-            <div class="flex justify-center items-center h-32">
-                <div class="spinner"></div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Main Chat Window -->
-    <div class="flex-1 flex flex-col relative">
-        <div class="chat-bg absolute inset-0"></div>
-        
-        <!-- Chat Header -->
-        <div id="chatHeader" class="h-16 glass flex items-center px-6 justify-between z-10">
-            <div class="flex items-center gap-4">
-                <div id="activeAvatar" class="w-10 h-10 rounded-full bg-[#202c33] flex items-center justify-center">
-                    <i data-lucide="user" class="w-5 h-5 text-gray-400"></i>
-                </div>
-                <div>
-                    <h2 id="activeName" class="font-bold">VibeChat</h2>
-                    <p id="activeStatus" class="text-xs text-[#00a884]">اختر محادثة للبدء</p>
-                </div>
-            </div>
-            <div class="flex gap-6 text-gray-400">
-                <i data-lucide="phone" id="audioCallBtn" class="cursor-pointer hover:text-[#00a884] transition w-5 h-5"></i>
-                <i data-lucide="video" id="videoCallBtn" class="cursor-pointer hover:text-[#00a884] transition w-5 h-5"></i>
-                <i data-lucide="more-vertical" class="cursor-pointer hover:text-[#00a884] transition w-5 h-5"></i>
-            </div>
+          </div>
+          <div id="search-results" class="flex-1 overflow-y-auto scrollbar-thin px-2"></div>
         </div>
 
-        <!-- Messages Area -->
-        <div id="messageArea" class="flex-1 overflow-y-auto p-6 flex flex-col gap-3 z-10">
-            <div class="flex justify-center items-center h-32">
-                <div class="text-gray-500 text-center">
-                    <i data-lucide="message-circle" class="w-12 h-12 mx-auto mb-2 opacity-50"></i>
-                    <p>اختر محادثة لبدء المراسلة</p>
-                </div>
-            </div>
-        </div>
-
-        <!-- Input Area -->
-        <div class="p-4 glass z-10 flex items-center gap-4">
-            <i data-lucide="paperclip" id="uploadBtn" class="text-gray-400 cursor-pointer hover:text-[#00a884] transition w-5 h-5"></i>
-            <input id="messageInput" type="text" placeholder="اكتب رسالة..." class="flex-1 bg-[#2a3942] rounded-xl py-3 px-6 focus:outline-none focus:ring-1 focus:ring-[#00a884] transition">
-            <button id="sendBtn" class="bg-[#00a884] p-3 rounded-full text-white hover:scale-105 transition-transform">
-                <i data-lucide="send" class="w-5 h-5"></i>
+        <div id="profile-panel" class="hidden flex flex-col h-full">
+          <div class="flex items-center gap-3 px-4 h-16 border-b border-white/5">
+            <button onclick="showPanel('chats')" class="w-9 h-9 rounded-lg flex items-center justify-center text-gray-400 hover:text-white">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m15 18-6-6 6-6"/></svg>
             </button>
-        </div>
-    </div>
-
-    <!-- Search Modal -->
-    <div id="searchModal" class="modal">
-        <div class="modal-content">
-            <h3 class="text-center text-xl font-bold mb-4">🔍 بحث عن مستخدمين</h3>
-            <div class="relative mb-4">
-                <i data-lucide="search" class="absolute right-3 top-2.5 text-gray-500 w-4 h-4"></i>
-                <input type="text" id="searchUsernameInput" placeholder="@username" class="w-full bg-[#2a3942] rounded-xl py-2 pr-10 pl-4 text-sm focus:outline-none focus:ring-1 focus:ring-[#00a884]">
+            <h2 class="text-lg font-semibold text-white">الملف الشخصي</h2>
+          </div>
+          <div class="flex-1 overflow-y-auto p-6 space-y-6">
+            <div class="flex flex-col items-center">
+              <div class="relative">
+                <div id="profile-avatar" class="w-28 h-28 rounded-full bg-[#2a3942] flex items-center justify-center overflow-hidden text-4xl font-bold text-white">?</div>
+                <label class="absolute bottom-0 right-0 w-10 h-10 rounded-full bg-[#00a884] flex items-center justify-center cursor-pointer">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+                  <input type="file" accept="image/*" class="hidden" onchange="uploadAvatar(this.files[0])" />
+                </label>
+              </div>
+              <p id="profile-username" class="text-gray-400 text-sm mt-2">@username</p>
             </div>
-            <div id="searchResults" class="max-h-80 overflow-y-auto"></div>
-            <button id="closeSearchModal" class="w-full bg-[#2a3942] text-white py-3 rounded-full mt-4 hover:bg-[#3b4a54] transition">إلغاء</button>
-        </div>
-    </div>
-
-    <!-- Profile Modal -->
-    <div id="profileModal" class="modal">
-        <div class="modal-content">
-            <h3 class="text-center text-xl font-bold mb-4">👤 الملف الشخصي</h3>
-            <div class="flex justify-center mb-4">
-                <div id="profileAvatarLarge" class="w-24 h-24 rounded-full bg-[#00a884] flex items-center justify-center overflow-hidden">
-                    <i data-lucide="user" class="w-12 h-12 text-white"></i>
-                </div>
+            <div class="space-y-4">
+              <div>
+                <label class="text-xs text-gray-500 block mb-1 text-right">الاسم الظاهر</label>
+                <input id="edit-displayname" type="text" class="w-full h-10 rounded-lg bg-white/5 px-4 text-sm text-white outline-none focus:ring-1 focus:ring-[#00a884]/50 text-right" dir="rtl" />
+              </div>
+              <div>
+                <label class="text-xs text-gray-500 block mb-1 text-right">النبذة</label>
+                <textarea id="edit-bio" rows="3" class="w-full rounded-lg bg-white/5 px-4 py-2 text-sm text-white outline-none focus:ring-1 focus:ring-[#00a884]/50 resize-none text-right" dir="rtl"></textarea>
+              </div>
             </div>
-            <input type="text" id="profileName" placeholder="الاسم" class="w-full bg-[#2a3942] rounded-xl py-3 px-4 mb-3 focus:outline-none focus:ring-1 focus:ring-[#00a884]">
-            <input type="text" id="profileUsername" placeholder="اسم المستخدم" class="w-full bg-[#2a3942] rounded-xl py-3 px-4 mb-3 focus:outline-none focus:ring-1 focus:ring-[#00a884]">
-            <textarea id="profileBio" placeholder="الحالة" rows="2" class="w-full bg-[#2a3942] rounded-xl py-3 px-4 mb-3 focus:outline-none focus:ring-1 focus:ring-[#00a884] resize-none"></textarea>
-            <button id="saveProfileBtn" class="w-full bg-[#00a884] text-white py-3 rounded-full mb-2 hover:bg-[#008f6f] transition">💾 حفظ</button>
-            <button id="changePhotoBtn" class="w-full bg-[#2a3942] text-white py-3 rounded-full mb-2 hover:bg-[#3b4a54] transition">📷 تغيير الصورة</button>
-            <button id="closeProfileModal" class="w-full bg-[#2a3942] text-white py-3 rounded-full hover:bg-[#3b4a54] transition">إلغاء</button>
+            <button onclick="updateProfileInfo()" class="w-full h-10 rounded-lg bg-[#00a884] hover:bg-[#00a884]/90 text-white text-sm font-medium transition-colors">حفظ التعديلات</button>
+          </div>
         </div>
+      </div>
     </div>
 
-    <!-- Call Overlay -->
-    <div id="callOverlay" class="hidden fixed inset-0 bg-black/95 z-50 flex flex-col items-center justify-center">
-        <div id="remoteVideo" class="w-full h-full absolute inset-0 bg-black"></div>
-        <div id="localVideo" class="w-48 h-64 absolute bottom-10 left-10 glass rounded-2xl overflow-hidden border-2 border-[#00a884]"></div>
-        <div class="absolute bottom-10 left-1/2 transform -translate-x-1/2 flex gap-6 z-50">
-            <button id="toggleMuteBtn" class="bg-[#2a3942] p-4 rounded-full text-white hover:bg-[#3b4a54] transition">
-                <i data-lucide="mic" class="w-6 h-6"></i>
-            </button>
-            <button id="toggleVideoBtn" class="bg-[#2a3942] p-4 rounded-full text-white hover:bg-[#3b4a54] transition">
-                <i data-lucide="video" class="w-6 h-6"></i>
-            </button>
-            <button id="endCallBtn" class="bg-red-500 p-4 rounded-full text-white hover:bg-red-600 transition">
-                <i data-lucide="phone-off" class="w-6 h-6"></i>
-            </button>
+    <!-- Chat Panel -->
+    <div id="chat-panel" class="hidden sm:flex flex-1 flex-col h-full min-w-0">
+      <div class="flex items-center justify-between px-4 h-16 border-b border-white/5 glass flex-shrink-0">
+        <div class="flex items-center gap-3">
+          <button onclick="goBackMobile()" class="w-9 h-9 rounded-lg flex items-center justify-center text-gray-400 hover:text-white sm:hidden">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m15 18-6-6 6-6"/></svg>
+          </button>
+          <div id="chat-header-avatar" class="w-10 h-10 rounded-full bg-[#2a3942] flex items-center justify-center text-white font-semibold text-sm overflow-hidden">?</div>
+          <div>
+            <h2 id="chat-header-name" class="text-sm font-semibold text-white"></h2>
+            <p class="text-xs"><span id="chat-header-username" class="text-gray-400"></span> · <span id="chat-header-status" class="text-gray-500">غير متصل</span></p>
+            <div id="typing-indicator" class="hidden text-xs text-[#00a884]">يكتب...</div>
+          </div>
         </div>
+        <div class="flex items-center gap-1">
+          <button onclick="startCallFixed(false)" class="w-9 h-9 rounded-lg flex items-center justify-center text-gray-400 hover:text-white hover:bg-white/5 transition" title="مكالمة صوتية">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+          </button>
+          <button onclick="startCallFixed(true)" class="w-9 h-9 rounded-lg flex items-center justify-center text-gray-400 hover:text-white hover:bg-white/5 transition" title="مكالمة فيديو">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
+          </button>
+        </div>
+      </div>
+
+      <!-- Reply Preview -->
+      <div id="reply-preview" class="hidden px-3 pt-2"></div>
+
+      <!-- Messages -->
+      <div id="messages-area" class="flex-1 overflow-y-auto scrollbar-thin px-4 py-4 space-y-1"></div>
+
+      <!-- Attachment Preview -->
+      <div id="attachment-preview" class="hidden fixed bottom-24 left-4 right-4 bg-[#1a2730] rounded-xl p-2 z-20"></div>
+
+      <div class="px-3 py-3 border-t border-white/5 glass flex-shrink-0">
+        <div id="normal-input" class="flex items-center gap-2">
+          <label id="attach-btn" class="w-10 h-10 rounded-lg flex items-center justify-center text-gray-400 hover:text-white hover:bg-white/5 cursor-pointer transition">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+            <input type="file" accept="image/*,video/*" class="hidden" onchange="handleAttachmentSelect(this.files[0])" />
+          </label>
+          <input id="msg-input" type="text" placeholder="اكتب رسالة..." onkeydown="if(event.key==='Enter'){handleSendMessage();}else{onTypingStart();}" class="flex-1 h-10 rounded-lg bg-white/5 px-4 text-sm text-white placeholder:text-gray-500 outline-none focus:ring-1 focus:ring-[#00a884]/50 text-right" dir="rtl" />
+          <button onclick="if($('msg-input').value.trim()){handleSendMessage()}else{startRecordingFixed()}" class="w-10 h-10 rounded-lg bg-[#00a884] hover:bg-[#00a884]/90 flex items-center justify-center text-white transition" id="send-or-mic-btn">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+          </button>
+        </div>
+
+        <div id="recording-input" class="hidden flex items-center gap-2">
+          <button onclick="cancelRecordingFixed()" class="w-10 h-10 rounded-lg flex items-center justify-center text-red-400 hover:bg-red-500/10 transition">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
+          <div class="flex-1 flex items-center justify-center gap-3">
+            <div class="w-3 h-3 rounded-full bg-red-500 pulse-dot"></div>
+            <span id="rec-timer" class="text-sm text-white font-mono">0:00</span>
+            <span class="text-xs text-gray-400">جارٍ التسجيل...</span>
+          </div>
+          <button onclick="sendVoiceMessageFixed()" class="w-10 h-10 rounded-lg bg-[#00a884] hover:bg-[#00a884]/90 flex items-center justify-center text-white transition">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+          </button>
+        </div>
+      </div>
     </div>
 
-    <div id="toast" class="toast"></div>
+    <div id="empty-chat" class="hidden sm:flex flex-1 items-center justify-center">
+      <div class="text-center">
+        <div class="w-20 h-20 rounded-2xl bg-[#00a884]/10 mx-auto flex items-center justify-center mb-4">
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#00a884" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+        </div>
+        <h2 class="text-xl font-semibold text-white mb-2">VibeChat</h2>
+        <p class="text-gray-500 text-sm">اختر محادثة أو ابحث عن مستخدم بـ @username</p>
+      </div>
+    </div>
 
-    <!-- Scripts -->
-    <script src="https://download.agora.io/sdk/release/AgoraRTC_N.js"></script>
-    <script src="https://upload-widget.cloudinary.com/global/all.js" type="text/javascript"></script>
-    <script type="module" src="script.js"></script>
-    <script>
-        // Initialize Lucide icons
-        lucide.createIcons();
-        // Re-run lucide after dynamic content updates
-        window.refreshIcons = () => lucide.createIcons();
-    </script>
+    <!-- Call Screen -->
+    <div id="call-screen" class="hidden fixed inset-0 z-50 bg-[#0b141a] flex flex-col items-center justify-center">
+      <div id="remote-video" class="hidden absolute inset-0 bg-[#1a2730]"></div>
+      <div id="call-avatar-area" class="flex flex-col items-center z-10">
+        <div class="w-24 h-24 rounded-full bg-[#2a3942] flex items-center justify-center text-3xl font-bold text-white mb-4">?</div>
+        <p id="call-user-name" class="text-white font-semibold text-lg"></p>
+        <p id="call-user-handle" class="text-gray-400 text-sm"></p>
+        <p id="call-status" class="text-[#00a884] text-xs mt-2 pulse-dot">جارٍ الاتصال...</p>
+      </div>
+      <div id="local-video" class="hidden absolute top-4 right-4 w-32 h-44 rounded-xl overflow-hidden border-2 border-white/10 z-20 bg-[#2a3942]"></div>
+      <div class="absolute bottom-8 flex items-center gap-4 z-30">
+        <button id="mic-btn" onclick="toggleMic()" class="w-14 h-14 rounded-full bg-[#2a3942] flex items-center justify-center text-white">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+        </button>
+        <button onclick="endCall()" class="w-16 h-16 rounded-full bg-red-500 flex items-center justify-center text-white">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.68 13.31a16 16 0 0 0 3.41 2.6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91"/><line x1="23" y1="1" x2="1" y2="23"/></svg>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    function showAuthTab(tab) {
+      document.getElementById("auth-error").classList.add("hidden");
+      if (tab === "login") {
+        document.getElementById("login-form").classList.remove("hidden");
+        document.getElementById("register-form").classList.add("hidden");
+        document.getElementById("tab-login").className = "flex-1 py-2 rounded-md text-sm font-medium bg-[#00a884] text-white transition-all";
+        document.getElementById("tab-register").className = "flex-1 py-2 rounded-md text-sm font-medium text-gray-400 hover:text-white transition-all";
+      } else {
+        document.getElementById("login-form").classList.add("hidden");
+        document.getElementById("register-form").classList.remove("hidden");
+        document.getElementById("tab-register").className = "flex-1 py-2 rounded-md text-sm font-medium bg-[#00a884] text-white transition-all";
+        document.getElementById("tab-login").className = "flex-1 py-2 rounded-md text-sm font-medium text-gray-400 hover:text-white transition-all";
+      }
+    }
+
+    function $(id) { return document.getElementById(id); }
+    function hide(id) { const el = $(id); if (el) el.classList.add("hidden"); }
+    function show(id) { const el = $(id); if (el) el.classList.remove("hidden"); }
+  </script>
+
+  <script type="module" src="./script.js"></script>
 </body>
 </html>

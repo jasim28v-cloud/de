@@ -1,258 +1,261 @@
-import { auth, db, ref, push, set, onValue, update, get, child, remove, CLOUD_NAME, UPLOAD_PRESET, AGORA_APP_ID } from './firebase-config.js';
+import { auth, db, ref, push, set, onValue, update, get, child, CLOUD_NAME, UPLOAD_PRESET, AGORA_APP_ID } from './firebase-config.js';
 import { signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.0/firebase-auth.js";
 
+// ========== المتغيرات العامة ==========
 let currentUser = null;
 let currentUserData = null;
 let allUsers = {};
-let currentChat = null;
+let allChats = [];
+let currentChatId = null;
+let currentChatUser = null;
+let selectedFile = null;
 let mediaRecorder = null;
 let audioChunks = [];
-let selectedMediaFile = null;
-let agoraClient = null;
-let localTracks = null;
 
-// ========== AUTH ==========
-window.switchAuth = (type) => {
+// ========== متغيرات Agora للمكالمات ==========
+let client = null;
+let localTracks = null;
+let remoteTracks = {};
+let inCall = false;
+let callChannel = null;
+
+// ========== المصادقة ==========
+window.switchAuth = function(type) {
+    document.querySelectorAll('.auth-tab').forEach(t => t.classList.remove('active'));
+    event.target.classList.add('active');
     document.querySelectorAll('.auth-form').forEach(f => f.classList.remove('active'));
     document.getElementById(type + 'Form').classList.add('active');
 };
 
-window.login = async () => {
+window.login = async function() {
     const email = document.getElementById('loginEmail').value;
     const password = document.getElementById('loginPassword').value;
     const msg = document.getElementById('loginMsg');
-    if (!email || !password) { msg.innerText = 'املأ جميع الحقول'; return; }
+    if (!email || !password) { msg.innerText = 'الرجاء ملء جميع الحقول'; return; }
+    msg.innerText = 'جاري تسجيل الدخول...';
     try {
         await signInWithEmailAndPassword(auth, email, password);
+        msg.innerText = '';
     } catch (error) {
-        msg.innerText = error.code === 'auth/user-not-found' ? 'لا يوجد حساب' : 'كلمة المرور خاطئة';
+        if (error.code === 'auth/user-not-found') msg.innerText = 'لا يوجد حساب بهذا البريد';
+        else if (error.code === 'auth/wrong-password') msg.innerText = 'كلمة المرور غير صحيحة';
+        else msg.innerText = 'حدث خطأ: ' + error.message;
     }
 };
 
-window.register = async () => {
+window.register = async function() {
     const name = document.getElementById('regName').value;
     const email = document.getElementById('regEmail').value;
-    const phone = document.getElementById('regPhone').value;
     const password = document.getElementById('regPass').value;
-    const confirm = document.getElementById('regConfirmPass').value;
     const msg = document.getElementById('regMsg');
-    
-    if (!name || !email || !phone || !password) { msg.innerText = 'املأ جميع الحقول'; return; }
-    if (password !== confirm) { msg.innerText = 'كلمة المرور غير متطابقة'; return; }
-    
+    if (!name || !email || !password) { msg.innerText = 'املأ جميع الحقول'; return; }
+    if (password.length < 6) { msg.innerText = 'كلمة المرور 6 أحرف على الأقل'; return; }
+    msg.innerText = 'جاري إنشاء الحساب...';
     try {
         const userCredential = await createUserWithEmailAndPassword(auth, email, password);
         await set(ref(db, `users/${userCredential.user.uid}`), {
-            name, email, phone, bio: '✨ متاح على WhatsApp', avatarUrl: '', online: true, lastSeen: Date.now(), createdAt: Date.now()
+            name, email, avatarUrl: '', status: 'مرحباً، أنا على واتساب', online: true, lastSeen: Date.now(), followers: {}, following: {}, createdAt: Date.now()
         });
-        showToast('✅ تم إنشاء الحساب');
+        msg.innerText = '';
     } catch (error) {
-        msg.innerText = error.code === 'auth/email-already-in-use' ? 'البريد مستخدم' : error.message;
+        if (error.code === 'auth/email-already-in-use') msg.innerText = 'البريد الإلكتروني مستخدم بالفعل';
+        else msg.innerText = 'حدث خطأ: ' + error.message;
     }
 };
 
-window.logout = async () => {
-    if (currentUser) await update(ref(db, `users/${currentUser.uid}`), { online: false, lastSeen: Date.now() });
-    signOut(auth);
-    location.reload();
-};
+window.logout = function() { signOut(auth); location.reload(); };
 
+// ========== تحميل البيانات ==========
 async function loadUserData() {
     const snap = await get(child(ref(db), `users/${currentUser.uid}`));
     if (snap.exists()) currentUserData = { uid: currentUser.uid, ...snap.val() };
-    await update(ref(db, `users/${currentUser.uid}`), { online: true, lastSeen: Date.now() });
+    document.getElementById('profileAvatar').innerHTML = currentUserData.avatarUrl ? `<img src="${currentUserData.avatarUrl}" class="w-full h-full rounded-full object-cover">` : (currentUserData.name?.charAt(0) || '👤');
+    document.getElementById('profileAvatarLarge').innerHTML = currentUserData.avatarUrl ? `<img src="${currentUserData.avatarUrl}" class="w-full h-full rounded-full object-cover">` : (currentUserData.name?.charAt(0) || '👤');
+    document.getElementById('profileNameLarge').innerText = currentUserData.name;
+    document.getElementById('profileStatus').innerText = currentUserData.status || 'مرحباً، أنا على واتساب';
+}
+onValue(ref(db, 'users'), (s) => { allUsers = s.val() || {}; });
+
+// ========== رفع الوسائط ==========
+async function uploadMedia(file) {
+    const fd = new FormData();
+    fd.append('file', file);
+    fd.append('upload_preset', UPLOAD_PRESET);
+    let resourceType = 'image';
+    if (file.type.startsWith('video/')) resourceType = 'video';
+    else if (file.type.startsWith('audio/')) resourceType = 'raw';
+    fd.append('resource_type', resourceType);
+    const res = await fetch(`https://api.cloudinary.com/v1_1/${CLOUD_NAME}/${resourceType}/upload`, { method: 'POST', body: fd });
+    const data = await res.json();
+    return { url: data.secure_url, type: resourceType === 'raw' ? 'audio' : resourceType };
 }
 
-onValue(ref(db, 'users'), (s) => {
-    allUsers = s.val() || {};
-    renderChatsList();
-    renderUsersList();
-});
+// ========== تحميل المحادثات ==========
+function getChatId(uid1, uid2) { return uid1 < uid2 ? `${uid1}_${uid2}` : `${uid2}_${uid1}`; }
 
-// ========== RENDER USERS FOR NEW CHAT ==========
-function renderUsersList() {
-    const container = document.getElementById('usersList');
-    if (!container) return;
-    const users = Object.entries(allUsers).filter(([uid, u]) => uid !== currentUser?.uid);
-    if (users.length === 0) {
-        container.innerHTML = '<div class="text-center text-gray-500 py-4">لا يوجد مستخدمين</div>';
-        return;
-    }
-    container.innerHTML = users.map(([uid, u]) => `
-        <div class="user-card" onclick="startChat('${uid}', '${escapeHtml(u.name)}')">
-            <div class="user-avatar">
-                ${u.avatarUrl ? `<img src="${u.avatarUrl}">` : `<i class="fas fa-user"></i>`}
-            </div>
-            <div class="user-info">
-                <div class="user-name">${escapeHtml(u.name)}</div>
-                <div class="user-status">${u.phone || ''} • ${u.online ? '🟢 متصل' : '📅 غير متصل'}</div>
-            </div>
-            <div class="user-actions">
-                <button class="user-action" onclick="event.stopPropagation(); startChat('${uid}', '${escapeHtml(u.name)}')"><i class="fas fa-comment"></i></button>
-                <button class="user-action" onclick="event.stopPropagation(); callUser('${uid}', 'audio')"><i class="fas fa-phone"></i></button>
-                <button class="user-action" onclick="event.stopPropagation(); callUser('${uid}', 'video')"><i class="fas fa-video"></i></button>
-            </div>
-        </div>
-    `).join('');
-}
-
-window.searchUsersByPhone = () => {
-    const query = document.getElementById('searchPhone').value.toLowerCase();
-    const cards = document.querySelectorAll('#usersList .user-card');
-    cards.forEach(card => {
-        const name = card.querySelector('.user-name')?.innerText.toLowerCase() || '';
-        const status = card.querySelector('.user-status')?.innerText.toLowerCase() || '';
-        card.style.display = (name.includes(query) || status.includes(query)) ? 'flex' : 'none';
+async function loadChats() {
+    const chatsRef = ref(db, `userChats/${currentUser.uid}`);
+    onValue(chatsRef, async (snapshot) => {
+        const data = snapshot.val() || {};
+        const chatList = [];
+        for (const [chatId, chatData] of Object.entries(data)) {
+            const otherId = chatId.replace(currentUser.uid, '').replace('_', '');
+            const otherUser = allUsers[otherId];
+            if (otherUser) {
+                chatList.push({
+                    id: chatId,
+                    otherId: otherId,
+                    otherUser: otherUser,
+                    lastMessage: chatData.lastMessage,
+                    lastTimestamp: chatData.lastTimestamp
+                });
+            }
+        }
+        chatList.sort((a,b) => (b.lastTimestamp || 0) - (a.lastTimestamp || 0));
+        allChats = chatList;
+        renderChatsList();
     });
-};
+}
 
-window.callUser = async (userId, type) => {
-    const chatId = currentUser.uid < userId ? `${currentUser.uid}_${userId}` : `${userId}_${currentUser.uid}`;
-    const chatRef = ref(db, `chats/${chatId}`);
-    if (!(await get(chatRef)).exists()) {
-        await set(chatRef, { type: 'private', participants: [currentUser.uid, userId], createdAt: Date.now() });
-    }
-    await openChat(chatId, 'private');
-    setTimeout(() => startCall(type), 500);
-};
-
-window.startChat = async (otherUserId, otherName) => {
-    const chatId = currentUser.uid < otherUserId ? `${currentUser.uid}_${otherUserId}` : `${otherUserId}_${currentUser.uid}`;
-    const chatRef = ref(db, `chats/${chatId}`);
-    if (!(await get(chatRef)).exists()) {
-        await set(chatRef, { type: 'private', participants: [currentUser.uid, otherUserId], createdAt: Date.now() });
-    }
-    closeNewChatModal();
-    openChat(chatId, 'private');
-    showToast(`💬 بدأت محادثة مع ${otherName}`);
-};
-
-// ========== CHATS ==========
-async function renderChatsList() {
+function renderChatsList() {
     const container = document.getElementById('chatsList');
     if (!container) return;
-    const chatsSnap = await get(child(ref(db), `chats`));
-    const allChats = chatsSnap.val() || {};
-    let userChats = [];
-    for (const [chatId, chat] of Object.entries(allChats)) {
-        if (chat.participants?.includes(currentUser.uid)) {
-            if (chat.type === 'private') {
-                const otherId = chat.participants.find(id => id !== currentUser.uid);
-                const otherUser = allUsers[otherId];
-                if (otherUser) {
-                    userChats.push({
-                        id: chatId, type: 'private', name: otherUser.name, avatar: otherUser.avatarUrl,
-                        online: otherUser.online, lastMessage: chat.lastMessage || '', lastUpdated: chat.lastUpdated || 0
-                    });
-                }
-            }
-        }
-    }
-    userChats.sort((a, b) => (b.lastUpdated || 0) - (a.lastUpdated || 0));
-    if (userChats.length === 0) {
-        container.innerHTML = '<div class="loading"><div class="spinner"></div><span>💬 لا توجد محادثات</span></div>';
+    container.innerHTML = '';
+    allChats.forEach(chat => {
+        const div = document.createElement('div');
+        div.className = 'chat-item';
+        div.onclick = () => openChat(chat.otherId);
+        div.innerHTML = `
+            <div class="chat-avatar">${chat.otherUser.avatarUrl ? `<img src="${chat.otherUser.avatarUrl}">` : (chat.otherUser.name?.charAt(0) || 'U')}</div>
+            <div class="chat-info">
+                <div class="chat-name">${chat.otherUser.name}</div>
+                <div class="chat-last-msg">${chat.lastMessage?.substring(0, 30) || ''}</div>
+            </div>
+            <div class="chat-time">${chat.lastTimestamp ? new Date(chat.lastTimestamp).toLocaleTimeString() : ''}</div>
+        `;
+        container.appendChild(div);
+    });
+    if (allChats.length === 0) container.innerHTML = '<div class="text-center text-gray-500 py-10">لا توجد محادثات</div>';
+}
+
+// ========== فتح محادثة ==========
+async function openChat(otherId) {
+    currentChatUser = allUsers[otherId];
+    currentChatId = getChatId(currentUser.uid, otherId);
+    renderChatArea();
+    loadMessages();
+}
+
+function renderChatArea() {
+    const container = document.getElementById('chatArea');
+    if (!currentChatUser) {
+        container.innerHTML = '<div class="flex items-center justify-center h-full text-gray-500">اختر محادثة للبدء</div>';
         return;
     }
-    container.innerHTML = userChats.map(chat => `
-        <div class="chat-item" onclick="openChat('${chat.id}', '${chat.type}')">
-            <div class="chat-avatar">
-                ${chat.avatar ? `<img src="${chat.avatar}">` : `<i class="fas fa-user"></i>`}
-                ${chat.online ? '<span class="online-dot"></span>' : ''}
+    container.innerHTML = `
+        <div class="chat-header">
+            <div class="chat-header-avatar">${currentChatUser.avatarUrl ? `<img src="${currentChatUser.avatarUrl}">` : (currentChatUser.name?.charAt(0) || 'U')}</div>
+            <div class="chat-header-info">
+                <div class="chat-header-name">${currentChatUser.name}</div>
+                <div class="chat-header-status">${currentChatUser.online ? 'متصل' : 'غير متصل'}</div>
             </div>
-            <div class="chat-info">
-                <div class="chat-name">${escapeHtml(chat.name)}</div>
-                <div class="chat-last-message">${escapeHtml(chat.lastMessage?.substring(0, 40) || '')}</div>
+            <div class="call-buttons">
+                <button class="call-btn" onclick="startCall('audio')"><i class="fas fa-phone"></i></button>
+                <button class="call-btn" onclick="startCall('video')"><i class="fas fa-video"></i></button>
             </div>
         </div>
-    `).join('');
+        <div id="messagesContainer" class="messages-container"></div>
+        <div class="input-area">
+            <button class="attach-btn" onclick="document.getElementById('fileInput').click()"><i class="fas fa-paperclip"></i></button>
+            <input type="file" id="fileInput" accept="image/*,video/*,audio/*" style="display:none" onchange="previewFile(this)">
+            <button class="attach-btn" onclick="startAudioRecording()" id="audioRecordBtn"><i class="fas fa-microphone"></i></button>
+            <input type="text" id="messageInput" placeholder="اكتب رسالة...">
+            <button class="send-btn" onclick="sendMessage()"><i class="fas fa-paper-plane"></i></button>
+        </div>
+    `;
 }
 
-window.openChat = async (chatId, type) => {
-    currentChat = { id: chatId, type };
-    document.getElementById('chatHeader').style.display = 'flex';
-    document.getElementById('chatInputArea').style.display = 'flex';
-    const chatSnap = await get(child(ref(db), `chats/${chatId}`));
-    const chat = chatSnap.val();
-    if (chat.type === 'private') {
-        const otherId = chat.participants.find(id => id !== currentUser.uid);
-        const otherUser = allUsers[otherId];
-        if (otherUser) {
-            document.getElementById('chatHeaderAvatar').innerHTML = otherUser.avatarUrl ? `<img src="${otherUser.avatarUrl}">` : `<i class="fas fa-user"></i>`;
-            document.getElementById('chatHeaderName').innerText = otherUser.name;
-            document.getElementById('chatHeaderStatus').innerText = otherUser.online ? '🟢 متصل الآن' : `آخر ظهور ${new Date(otherUser.lastSeen).toLocaleString()}`;
-        }
-    }
-    loadMessages(chatId);
-};
-
-function loadMessages(chatId) {
-    const container = document.getElementById('messagesArea');
-    container.innerHTML = '<div class="loading"><div class="spinner"></div><span>📨 تحميل الرسائل...</span></div>';
-    onValue(ref(db, `messages/${chatId}`), (snap) => {
-        const messages = snap.val() || {};
+function loadMessages() {
+    const messagesRef = ref(db, `messages/${currentChatId}`);
+    onValue(messagesRef, (snapshot) => {
+        const data = snapshot.val() || {};
+        const container = document.getElementById('messagesContainer');
+        if (!container) return;
         container.innerHTML = '';
-        const sorted = Object.entries(messages).sort((a, b) => a[1].timestamp - b[1].timestamp);
+        const sorted = Object.entries(data).sort((a,b) => a[1].timestamp - b[1].timestamp);
         for (const [id, msg] of sorted) {
-            const isSent = msg.sender === currentUser.uid;
-            const time = new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            const isSent = msg.senderId === currentUser.uid;
+            const status = isSent ? (msg.read ? 'قرأ' : msg.delivered ? 'وصل' : 'مرسل') : '';
             let content = '';
-            if (msg.text) content = `<div class="message-bubble">${escapeHtml(msg.text)}</div>`;
-            else if (msg.media) {
-                if (msg.media.type === 'image') content = `<div class="message-media" onclick="openImageModal('${msg.media.url}')"><img src="${msg.media.url}"></div>`;
-                else if (msg.media.type === 'video') content = `<div class="message-media"><video controls src="${msg.media.url}"></video></div>`;
-                else if (msg.media.type === 'audio') content = `<div class="message-audio"><audio controls src="${msg.media.url}"></audio></div>`;
-            }
-            container.innerHTML += `<div class="message ${isSent ? 'sent' : 'received'}"><div>${content}<div class="message-time">${time}</div></div></div>`;
+            if (msg.type === 'text') content = `<div class="message-bubble">${msg.text}</div>`;
+            else if (msg.type === 'image') content = `<img src="${msg.mediaUrl}" class="message-media" onclick="window.open('${msg.mediaUrl}')">`;
+            else if (msg.type === 'video') content = `<video controls class="message-media" src="${msg.mediaUrl}"></video>`;
+            else if (msg.type === 'audio') content = `<audio controls src="${msg.mediaUrl}"></audio>`;
+            const div = document.createElement('div');
+            div.className = `message ${isSent ? 'sent' : 'received'}`;
+            div.innerHTML = `
+                <div>${content}<div class="message-time">${new Date(msg.timestamp).toLocaleTimeString()} ${status ? `<span class="message-status">${status === 'قرأ' ? '✓✓' : status === 'وصل' ? '✓✓' : '✓'}</span>` : ''}</div></div>
+            `;
+            container.appendChild(div);
         }
-        if (container.innerHTML === '') container.innerHTML = '<div class="loading"><div class="spinner"></div><span>💬 لا توجد رسائل</span></div>';
         container.scrollTop = container.scrollHeight;
+        if (!isSent && !msg.read) update(ref(db, `messages/${currentChatId}/${id}`), { read: true });
     });
 }
 
-window.sendMessage = async () => {
+window.previewFile = async function(input) {
+    const file = input.files[0];
+    if (!file) return;
+    selectedFile = file;
+    const reader = new FileReader();
+    reader.onload = function(e) {
+        if (file.type.startsWith('image/')) {
+            document.getElementById('messagesContainer').innerHTML += `<div class="message sent"><div><img src="${e.target.result}" class="message-media"><div class="message-time">جاري الرفع...</div></div></div>`;
+        }
+    };
+    reader.readAsDataURL(file);
+    await sendMediaMessage(file);
+};
+
+window.sendMediaMessage = async function(file) {
+    const result = await uploadMedia(file);
+    const message = {
+        senderId: currentUser.uid,
+        senderName: currentUserData.name,
+        mediaUrl: result.url,
+        type: result.type,
+        timestamp: Date.now(),
+        delivered: false,
+        read: false
+    };
+    await push(ref(db, `messages/${currentChatId}`), message);
+    await update(ref(db, `userChats/${currentUser.uid}/${currentChatId}`), { lastMessage: result.type === 'image' ? '📷 صورة' : result.type === 'video' ? '🎬 فيديو' : '🎤 رسالة صوتية', lastTimestamp: Date.now() });
+    await update(ref(db, `userChats/${currentChatUser.uid}/${currentChatId}`), { lastMessage: result.type === 'image' ? '📷 صورة' : result.type === 'video' ? '🎬 فيديو' : '🎤 رسالة صوتية', lastTimestamp: Date.now() });
+    selectedFile = null;
+};
+
+window.sendMessage = async function() {
     const input = document.getElementById('messageInput');
     const text = input.value.trim();
-    if (!text && !selectedMediaFile) return;
-    if (!currentChat) return;
-    let mediaUrl = null, mediaType = null;
-    if (selectedMediaFile) {
-        showToast('📤 جاري الرفع...');
-        const result = await uploadMedia(selectedMediaFile);
-        mediaUrl = result.url; mediaType = result.type;
-        selectedMediaFile = null;
-    }
-    await push(ref(db, `messages/${currentChat.id}`), {
-        sender: currentUser.uid, text: text || null, media: mediaUrl ? { url: mediaUrl, type: mediaType } : null, timestamp: Date.now()
-    });
-    await update(ref(db, `chats/${currentChat.id}`), {
-        lastMessage: text || (mediaType === 'image' ? '📷 صورة' : mediaType === 'video' ? '🎥 فيديو' : '🎤 تسجيل'), lastUpdated: Date.now()
-    });
+    if (!text || !currentChatId) return;
+    const message = {
+        senderId: currentUser.uid,
+        senderName: currentUserData.name,
+        text: text,
+        type: 'text',
+        timestamp: Date.now(),
+        delivered: false,
+        read: false
+    };
+    await push(ref(db, `messages/${currentChatId}`), message);
+    await update(ref(db, `userChats/${currentUser.uid}/${currentChatId}`), { lastMessage: text, lastTimestamp: Date.now() });
+    await update(ref(db, `userChats/${currentChatUser.uid}/${currentChatId}`), { lastMessage: text, lastTimestamp: Date.now() });
     input.value = '';
 };
 
-async function uploadMedia(file) {
-    const formData = new FormData();
-    formData.append('file', file);
-    formData.append('upload_preset', UPLOAD_PRESET);
-    let resourceType = file.type.startsWith('video/') ? 'video' : 'image';
-    formData.append('resource_type', resourceType);
-    const url = `https://api.cloudinary.com/v1_1/${CLOUD_NAME}/${resourceType}/upload`;
-    const response = await fetch(url, { method: 'POST', body: formData });
-    const data = await response.json();
-    return { url: data.secure_url, type: resourceType };
-}
-
-window.sendFile = async (input) => {
-    const file = input.files[0];
-    if (!file || !currentChat) return;
-    selectedMediaFile = file;
-    await sendMessage();
-    input.value = '';
-};
-
-window.startRecording = async () => {
-    const btn = document.getElementById('recordBtn');
-    if (mediaRecorder?.state === 'recording') {
+window.startAudioRecording = async function() {
+    const btn = document.getElementById('audioRecordBtn');
+    if (mediaRecorder && mediaRecorder.state === 'recording') {
         mediaRecorder.stop();
         btn.innerHTML = '<i class="fas fa-microphone"></i>';
         return;
@@ -261,123 +264,107 @@ window.startRecording = async () => {
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
         mediaRecorder = new MediaRecorder(stream);
         audioChunks = [];
-        mediaRecorder.ondataavailable = (e) => audioChunks.push(e.data);
+        mediaRecorder.ondataavailable = (event) => { audioChunks.push(event.data); };
         mediaRecorder.onstop = async () => {
             const audioBlob = new Blob(audioChunks, { type: 'audio/mp3' });
             const audioFile = new File([audioBlob], 'recording.mp3', { type: 'audio/mp3' });
-            selectedMediaFile = audioFile;
-            await sendMessage();
-            stream.getTracks().forEach(t => t.stop());
+            await sendMediaMessage(audioFile);
+            stream.getTracks().forEach(track => track.stop());
         };
         mediaRecorder.start();
         btn.innerHTML = '<i class="fas fa-stop-circle text-red-500"></i>';
-    } catch (err) { showToast('❌ لا يمكن الوصول للميكروفون'); }
+    } catch (err) { alert('لا يمكن الوصول إلى الميكروفون'); }
 };
 
-// ========== CALLS ==========
-window.startCall = async (type) => {
-    if (!currentChat) { showToast('❌ اختر محادثة أولاً'); return; }
-    document.getElementById('callModal').classList.add('open');
-    const channelName = `call_${currentChat.id}`;
-    try {
-        agoraClient = AgoraRTC.createClient({ mode: "rtc", codec: "vp8" });
+// ========== المكالمات (Agora) ==========
+window.startCall = async function(type) {
+    if (!currentChatUser) return;
+    callChannel = currentChatId;
+    document.getElementById('callPanel').classList.add('open');
+    inCall = true;
+    
+    client = AgoraRTC.createClient({ mode: 'rtc', codec: 'vp8' });
+    
+    await client.join(AGORA_APP_ID, callChannel, null, currentUser.uid);
+    
+    if (type === 'video') {
         localTracks = await AgoraRTC.createMicrophoneAndCameraTracks();
-        localTracks[0].play("localVideo");
-        if (type === 'video') localTracks[1].play("localVideo");
-        await agoraClient.join(AGORA_APP_ID, channelName, null, currentUser.uid);
-        await agoraClient.publish(localTracks);
-        agoraClient.on("user-published", async (user, mediaType) => {
-            await agoraClient.subscribe(user, mediaType);
-            if (mediaType === "video") user.videoTrack.play("remoteVideo");
-            if (mediaType === "audio") user.audioTrack.play();
-        });
-    } catch (err) { endCall(); }
-};
-
-window.endCall = () => {
-    if (localTracks) localTracks.forEach(t => t.close());
-    if (agoraClient) agoraClient.leave();
-    document.getElementById('callModal').classList.remove('open');
-    localTracks = null;
-};
-
-window.toggleMute = () => { if (localTracks?.[0]) localTracks[0].setEnabled(!localTracks[0].enabled); };
-window.toggleVideo = () => { if (localTracks?.[1]) localTracks[1].setEnabled(!localTracks[1].enabled); };
-
-// ========== PROFILE ==========
-window.openProfile = () => {
-    document.getElementById('profileName').value = currentUserData?.name || '';
-    document.getElementById('profilePhone').value = currentUserData?.phone || '';
-    document.getElementById('profileBio').value = currentUserData?.bio || '';
-    const avatarDiv = document.getElementById('profileAvatarLarge');
-    avatarDiv.innerHTML = currentUserData?.avatarUrl ? `<img src="${currentUserData.avatarUrl}" class="w-full h-full object-cover">` : '<i class="fas fa-user fa-3x text-white"></i>';
-    document.getElementById('profileModal').classList.add('open');
-};
-
-window.closeProfileModal = () => document.getElementById('profileModal').classList.remove('open');
-
-window.saveProfile = async () => {
-    const name = document.getElementById('profileName').value;
-    const phone = document.getElementById('profilePhone').value;
-    const bio = document.getElementById('profileBio').value;
-    if (!name.trim()) { showToast('❌ الاسم مطلوب'); return; }
-    await update(ref(db, `users/${currentUser.uid}`), { name: name.trim(), phone, bio });
-    showToast('✅ تم التحديث');
-    closeProfileModal();
-    location.reload();
-};
-
-window.changeProfilePhoto = () => {
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.accept = 'image/*';
-    input.onchange = async (e) => {
-        const file = e.target.files[0];
-        if (!file) return;
-        showToast('📤 جاري الرفع...');
-        const result = await uploadMedia(file);
-        await update(ref(db, `users/${currentUser.uid}`), { avatarUrl: result.url });
-        showToast('✅ تم التحديث');
-        location.reload();
-    };
-    input.click();
-};
-
-// ========== MODALS ==========
-window.openNewChatModal = () => {
-    document.getElementById('newChatModal').classList.add('open');
-    renderUsersList();
-    document.getElementById('searchPhone').value = '';
-};
-window.closeNewChatModal = () => document.getElementById('newChatModal').classList.remove('open');
-window.searchChats = () => {
-    const query = document.getElementById('searchChats').value.toLowerCase();
-    document.querySelectorAll('.chat-item').forEach(item => {
-        const name = item.querySelector('.chat-name')?.innerText.toLowerCase() || '';
-        item.style.display = name.includes(query) ? 'flex' : 'none';
+        document.getElementById('localVideo').srcObject = localTracks[1].getMediaStream();
+    } else {
+        localTracks = await AgoraRTC.createMicrophoneAudioTrack();
+        document.getElementById('localVideo').style.display = 'none';
+    }
+    await client.publish(localTracks);
+    
+    client.on('user-published', async (user, mediaType) => {
+        await client.subscribe(user, mediaType);
+        if (mediaType === 'video') {
+            remoteTracks[user.uid] = user.videoTrack;
+            user.videoTrack.play('remoteVideo');
+        }
+        if (mediaType === 'audio') {
+            remoteTracks[user.uid] = user.audioTrack;
+            user.audioTrack.play();
+        }
+    });
+    
+    client.on('user-unpublished', (user) => {
+        if (remoteTracks[user.uid]) remoteTracks[user.uid].stop();
     });
 };
 
-function escapeHtml(text) { if (!text) return ''; const div = document.createElement('div'); div.textContent = text; return div.innerHTML; }
-function showToast(message) {
-    let toast = document.getElementById('customToast');
-    if (!toast) { toast = document.createElement('div'); toast.id = 'customToast'; document.body.appendChild(toast); }
-    toast.innerText = message; toast.style.opacity = '1';
-    setTimeout(() => toast.style.opacity = '0', 3000);
-}
-window.openImageModal = (url) => { document.getElementById('modalImage').src = url; document.getElementById('imageModal').style.display = 'flex'; };
-window.closeImageModal = () => document.getElementById('imageModal').style.display = 'none';
+window.endCall = function() {
+    if (localTracks) localTracks.forEach(track => track.close());
+    if (client) client.leave();
+    inCall = false;
+    document.getElementById('callPanel').classList.remove('open');
+    document.getElementById('localVideo').srcObject = null;
+    document.getElementById('remoteVideo').srcObject = null;
+};
 
-// ========== AUTH ==========
+window.toggleMicrophone = function() {
+    if (localTracks && localTracks[0]) localTracks[0].setEnabled(!localTracks[0].enabled);
+};
+window.toggleCamera = function() {
+    if (localTracks && localTracks[1]) localTracks[1].setEnabled(!localTracks[1].enabled);
+};
+
+// ========== محادثة جديدة ==========
+window.newChat = function() {
+    const email = prompt('أدخل البريد الإلكتروني للمستخدم:');
+    if (!email) return;
+    const user = Object.values(allUsers).find(u => u.email === email && u.uid !== currentUser.uid);
+    if (!user) { alert('لم يتم العثور على المستخدم'); return; }
+    openChat(user.uid);
+};
+
+// ========== الملف الشخصي ==========
+window.openProfile = function() { document.getElementById('profilePanel').classList.remove('hidden'); };
+window.closeProfile = function() { document.getElementById('profilePanel').classList.add('hidden'); };
+
+// ========== حالة الاتصال ==========
+onValue(ref(db, '.info/connected'), (snap) => {
+    if (snap.val() === true && currentUser) {
+        set(ref(db, `presence/${currentUser.uid}`), true);
+        set(ref(db, `users/${currentUser.uid}/online`), true);
+        set(ref(db, `users/${currentUser.uid}/lastSeen`), Date.now());
+        onValue(ref(db, 'presence'), () => {});
+    }
+});
+
+// ========== مراقبة المستخدم ==========
 onAuthStateChanged(auth, async (user) => {
     if (user) {
-        currentUser = user; await loadUserData();
+        currentUser = user;
+        await loadUserData();
         document.getElementById('authScreen').style.display = 'none';
-        document.getElementById('mainApp').style.display = 'block';
-        const sidebarAvatar = document.getElementById('sidebarAvatar');
-        sidebarAvatar.innerHTML = currentUserData?.avatarUrl ? `<img src="${currentUserData.avatarUrl}" class="w-full h-full object-cover">` : '<i class="fas fa-user"></i>';
-        showToast(`👋 مرحباً ${currentUserData?.name}`);
-        setInterval(async () => { if (currentUser) await update(ref(db, `users/${currentUser.uid}`), { online: true, lastSeen: Date.now() }); }, 30000);
+        document.getElementById('mainApp').style.display = 'flex';
+        loadChats();
+        const presenceRef = ref(db, `presence/${user.uid}`);
+        set(presenceRef, true);
+        set(ref(db, `users/${user.uid}/online`), true);
+        set(ref(db, `users/${user.uid}/lastSeen`), Date.now());
+        onValue(ref(db, '.info/connected'), (snap) => { if (snap.val() === true) set(presenceRef, true); });
     } else {
         document.getElementById('authScreen').style.display = 'flex';
         document.getElementById('mainApp').style.display = 'none';

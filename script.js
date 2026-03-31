@@ -12,7 +12,6 @@ let audioChunks = [];
 let selectedMediaFile = null;
 let agoraClient = null;
 let localTracks = null;
-let currentCall = null;
 
 // ========== AUTH ==========
 window.switchAuth = (type) => {
@@ -39,26 +38,33 @@ window.login = async () => {
 window.register = async () => {
     const name = document.getElementById('regName').value;
     const email = document.getElementById('regEmail').value;
-    const username = document.getElementById('regUsername').value;
+    let username = document.getElementById('regUsername').value;
     const password = document.getElementById('regPass').value;
     const confirm = document.getElementById('regConfirmPass').value;
     const msg = document.getElementById('regMsg');
+    
     if (!name || !email || !password) { msg.innerText = 'املأ جميع الحقول'; return; }
     if (password !== confirm) { msg.innerText = 'كلمة المرور غير متطابقة'; return; }
+    
+    // Clean username
+    username = username.replace('@', '').trim();
+    if (!username) username = name.toLowerCase().replace(/\s/g, '');
+    
     msg.innerText = 'جاري إنشاء الحساب...';
     try {
         const userCredential = await createUserWithEmailAndPassword(auth, email, password);
         await set(ref(db, `users/${userCredential.user.uid}`), {
             name,
             email,
-            username: username || name.toLowerCase().replace(/\s/g, ''),
-            bio: '',
+            username: username,
+            bio: '✨ مرحباً! أنا على NexTalk',
             avatarUrl: '',
             online: true,
             lastSeen: Date.now(),
             createdAt: Date.now()
         });
         msg.innerText = '';
+        showToast('✅ تم إنشاء الحساب بنجاح!');
     } catch (error) {
         if (error.code === 'auth/email-already-in-use') msg.innerText = 'البريد مستخدم';
         else msg.innerText = error.message;
@@ -82,7 +88,124 @@ async function loadUserData() {
 onValue(ref(db, 'users'), (s) => {
     allUsers = s.val() || {};
     renderChatsList();
+    renderAllUsersList();
 });
+
+// ========== RENDER ALL USERS LIST ==========
+function renderAllUsersList() {
+    const container = document.getElementById('allUsersList');
+    if (!container) return;
+    
+    const users = Object.entries(allUsers).filter(([uid, u]) => uid !== currentUser?.uid);
+    
+    if (users.length === 0) {
+        container.innerHTML = '<div class="text-center text-gray-400 py-4">لا يوجد مستخدمين آخرين</div>';
+        return;
+    }
+    
+    container.innerHTML = users.map(([uid, u]) => `
+        <div class="user-card">
+            <div class="user-avatar-large">
+                ${u.avatarUrl ? `<img src="${u.avatarUrl}">` : `<i class="fas fa-user fa-2x"></i>`}
+            </div>
+            <div class="user-info-large">
+                <div class="user-name-large">${escapeHtml(u.name)}</div>
+                <div class="user-username-large">@${escapeHtml(u.username || '')}</div>
+                <div class="user-bio-large">${escapeHtml(u.bio?.substring(0, 50) || '')}</div>
+            </div>
+            <div class="user-actions">
+                <button class="user-action-btn chat" onclick="startChat('${uid}', '${escapeHtml(u.name)}')" title="محادثة">
+                    <i class="fas fa-comment"></i>
+                </button>
+                <button class="user-action-btn call" onclick="callUser('${uid}', 'audio')" title="مكالمة صوتية">
+                    <i class="fas fa-phone"></i>
+                </button>
+                <button class="user-action-btn video" onclick="callUser('${uid}', 'video')" title="مكالمة فيديو">
+                    <i class="fas fa-video"></i>
+                </button>
+            </div>
+        </div>
+    `).join('');
+}
+
+// ========== SEARCH USER BY USERNAME ==========
+window.searchUserByUsername = async () => {
+    const username = document.getElementById('addByUsername').value.trim().replace('@', '');
+    const resultDiv = document.getElementById('searchUserResult');
+    
+    if (!username) {
+        resultDiv.innerHTML = '<div class="text-center text-yellow-400 py-2">⚠️ الرجاء إدخال اسم المستخدم</div>';
+        return;
+    }
+    
+    const user = Object.entries(allUsers).find(([uid, u]) => u.username?.toLowerCase() === username.toLowerCase() && uid !== currentUser?.uid);
+    
+    if (!user) {
+        resultDiv.innerHTML = '<div class="text-center text-red-400 py-2">❌ لا يوجد مستخدم بهذا الاسم</div>';
+        return;
+    }
+    
+    const [uid, u] = user;
+    resultDiv.innerHTML = `
+        <div class="user-card" style="background: rgba(168,85,247,0.2); border-color: #a855f7;">
+            <div class="user-avatar-large">
+                ${u.avatarUrl ? `<img src="${u.avatarUrl}">` : `<i class="fas fa-user fa-2x"></i>`}
+            </div>
+            <div class="user-info-large">
+                <div class="user-name-large">${escapeHtml(u.name)}</div>
+                <div class="user-username-large">@${escapeHtml(u.username)}</div>
+                <div class="user-bio-large">${escapeHtml(u.bio?.substring(0, 50) || '')}</div>
+            </div>
+            <div class="user-actions">
+                <button class="user-action-btn chat" onclick="startChat('${uid}', '${escapeHtml(u.name)}'); closeAddUserModal();" title="محادثة">
+                    <i class="fas fa-comment"></i>
+                </button>
+                <button class="user-action-btn call" onclick="callUser('${uid}', 'audio'); closeAddUserModal();" title="مكالمة صوتية">
+                    <i class="fas fa-phone"></i>
+                </button>
+                <button class="user-action-btn video" onclick="callUser('${uid}', 'video'); closeAddUserModal();" title="مكالمة فيديو">
+                    <i class="fas fa-video"></i>
+                </button>
+            </div>
+        </div>
+    `;
+};
+
+// ========== CALL USER ==========
+window.callUser = async (userId, type) => {
+    // Create or get chat
+    const chatId = currentUser.uid < userId ? `${currentUser.uid}_${userId}` : `${userId}_${currentUser.uid}`;
+    const chatRef = ref(db, `chats/${chatId}`);
+    const snap = await get(chatRef);
+    if (!snap.exists()) {
+        await set(chatRef, {
+            type: 'private',
+            participants: [currentUser.uid, userId],
+            createdAt: Date.now()
+        });
+    }
+    
+    // Open chat and start call
+    await openChat(chatId, 'private');
+    setTimeout(() => startCall(type), 500);
+};
+
+// ========== START CHAT ==========
+window.startChat = async (otherUserId, otherName) => {
+    const chatId = currentUser.uid < otherUserId ? `${currentUser.uid}_${otherUserId}` : `${otherUserId}_${currentUser.uid}`;
+    const chatRef = ref(db, `chats/${chatId}`);
+    const snap = await get(chatRef);
+    if (!snap.exists()) {
+        await set(chatRef, {
+            type: 'private',
+            participants: [currentUser.uid, otherUserId],
+            createdAt: Date.now()
+        });
+    }
+    closeAddUserModal();
+    openChat(chatId, 'private');
+    showToast(`💬 بدأت محادثة مع ${otherName}`);
+};
 
 // ========== CHATS LIST ==========
 async function renderChatsList() {
@@ -123,7 +246,7 @@ async function renderChatsList() {
     userChats.sort((a, b) => (b.lastUpdated || 0) - (a.lastUpdated || 0));
     
     if (userChats.length === 0) {
-        container.innerHTML = '<div class="loading"><div class="spinner"></div><span>لا توجد محادثات</span></div>';
+        container.innerHTML = '<div class="loading"><div class="spinner"></div><span>💬 لا توجد محادثات</span></div>';
         return;
     }
     
@@ -157,12 +280,8 @@ window.openChat = async (chatId, type) => {
         if (otherUser) {
             document.getElementById('chatHeaderAvatar').innerHTML = otherUser.avatarUrl ? `<img src="${otherUser.avatarUrl}">` : `<i class="fas fa-user fa-2x"></i>`;
             document.getElementById('chatHeaderName').innerText = otherUser.name;
-            document.getElementById('chatHeaderStatus').innerText = otherUser.online ? '🟢 متصل' : `📅 ${new Date(otherUser.lastSeen).toLocaleString()}`;
+            document.getElementById('chatHeaderStatus').innerText = otherUser.online ? '🟢 متصل الآن' : `📅 ${new Date(otherUser.lastSeen).toLocaleString()}`;
         }
-    } else {
-        document.getElementById('chatHeaderAvatar').innerHTML = chat.photo ? `<img src="${chat.photo}">` : `<i class="fas fa-users fa-2x"></i>`;
-        document.getElementById('chatHeaderName').innerText = chat.name;
-        document.getElementById('chatHeaderStatus').innerText = `${Object.keys(chat.participants || {}).length} عضو`;
     }
     
     loadMessages(chatId);
@@ -170,7 +289,7 @@ window.openChat = async (chatId, type) => {
 
 function loadMessages(chatId) {
     const container = document.getElementById('messagesArea');
-    container.innerHTML = '<div class="loading"><div class="spinner"></div><span>تحميل الرسائل...</span></div>';
+    container.innerHTML = '<div class="loading"><div class="spinner"></div><span>📨 تحميل الرسائل...</span></div>';
     
     const messagesRef = ref(db, `messages/${chatId}`);
     onValue(messagesRef, (snap) => {
@@ -206,7 +325,7 @@ function loadMessages(chatId) {
         }
         
         if (container.innerHTML === '') {
-            container.innerHTML = '<div class="loading"><div class="spinner"></div><span>لا توجد رسائل</span></div>';
+            container.innerHTML = '<div class="loading"><div class="spinner"></div><span>💬 لا توجد رسائل</span></div>';
         }
         container.scrollTop = container.scrollHeight;
     });
@@ -226,7 +345,6 @@ window.sendMessage = async () => {
         mediaUrl = result.url;
         mediaType = result.type;
         selectedMediaFile = null;
-        document.getElementById('mediaPreview')?.remove();
     }
     
     await push(ref(db, `messages/${currentChat.id}`), {
@@ -294,70 +412,6 @@ window.startRecording = async () => {
     }
 };
 
-// ========== SEARCH USERS ==========
-window.searchUsers = () => {
-    const query = document.getElementById('searchUsers').value.toLowerCase();
-    const container = document.getElementById('chatsList');
-    const items = document.querySelectorAll('.chat-item');
-    if (items.length > 0) {
-        items.forEach(item => {
-            const name = item.querySelector('.chat-name')?.innerText.toLowerCase() || '';
-            item.style.display = name.includes(query) ? 'flex' : 'none';
-        });
-    }
-};
-
-window.openNewChatModal = () => {
-    document.getElementById('newChatModal').classList.add('open');
-    searchUsersList();
-};
-
-window.closeNewChatModal = () => {
-    document.getElementById('newChatModal').classList.remove('open');
-};
-
-window.searchUsersList = () => {
-    const query = document.getElementById('searchUserInput').value.toLowerCase();
-    const container = document.getElementById('searchResultsList');
-    const users = Object.entries(allUsers).filter(([uid, u]) => 
-        uid !== currentUser.uid && (u.name?.toLowerCase().includes(query) || u.username?.toLowerCase().includes(query))
-    );
-    
-    if (users.length === 0) {
-        container.innerHTML = '<div class="text-center text-gray-400 py-4">لا توجد نتائج</div>';
-        return;
-    }
-    
-    container.innerHTML = users.map(([uid, u]) => `
-        <div class="user-item" onclick="startChat('${uid}', '${escapeHtml(u.name)}')">
-            <div class="user-avatar">
-                ${u.avatarUrl ? `<img src="${u.avatarUrl}">` : `<i class="fas fa-user fa-2x"></i>`}
-            </div>
-            <div class="user-info">
-                <div class="user-name">${escapeHtml(u.name)}</div>
-                <div class="user-username">@${escapeHtml(u.username || '')}</div>
-            </div>
-            <i class="fas fa-comment text-purple-400"></i>
-        </div>
-    `).join('');
-};
-
-window.startChat = async (otherUserId, otherName) => {
-    const chatId = currentUser.uid < otherUserId ? `${currentUser.uid}_${otherUserId}` : `${otherUserId}_${currentUser.uid}`;
-    const chatRef = ref(db, `chats/${chatId}`);
-    const snap = await get(chatRef);
-    if (!snap.exists()) {
-        await set(chatRef, {
-            type: 'private',
-            participants: [currentUser.uid, otherUserId],
-            createdAt: Date.now()
-        });
-    }
-    closeNewChatModal();
-    openChat(chatId, 'private');
-    showToast(`💬 بدأت محادثة مع ${otherName}`);
-};
-
 // ========== CALLS ==========
 window.startCall = async (type) => {
     if (!currentChat || currentChatType !== 'private') {
@@ -390,7 +444,6 @@ window.startCall = async (type) => {
             }
         });
         
-        currentCall = { channelName, type };
         showToast('📞 جاري الاتصال...');
         
     } catch (err) {
@@ -410,23 +463,18 @@ window.endCall = () => {
     document.getElementById('callModal').classList.remove('open');
     localTracks = null;
     agoraClient = null;
-    currentCall = null;
     showToast('📞 انتهت المكالمة');
 };
 
 window.toggleMute = () => {
     if (localTracks && localTracks[0]) {
         localTracks[0].setEnabled(!localTracks[0].enabled);
-        const btn = document.querySelector('#callModal button:first-child');
-        if (btn) btn.innerHTML = localTracks[0].enabled ? '<i class="fas fa-microphone fa-2x"></i>' : '<i class="fas fa-microphone-slash fa-2x"></i>';
     }
 };
 
 window.toggleVideo = () => {
     if (localTracks && localTracks[1]) {
         localTracks[1].setEnabled(!localTracks[1].enabled);
-        const btn = document.querySelector('#callModal button:nth-child(2)');
-        if (btn) btn.innerHTML = localTracks[1].enabled ? '<i class="fas fa-video fa-2x"></i>' : '<i class="fas fa-video-slash fa-2x"></i>';
     }
 };
 
@@ -439,7 +487,7 @@ window.openProfile = () => {
     if (currentUserData?.avatarUrl) {
         avatarDiv.innerHTML = `<img src="${currentUserData.avatarUrl}" class="w-full h-full object-cover">`;
     } else {
-        avatarDiv.innerHTML = '<i class="fas fa-user fa-3x text-white"></i>';
+        avatarDiv.innerHTML = '<i class="fas fa-user fa-4x text-white"></i>';
     }
     document.getElementById('profileModal').classList.add('open');
 };
@@ -450,15 +498,20 @@ window.closeProfileModal = () => {
 
 window.saveProfile = async () => {
     const name = document.getElementById('profileName').value;
-    const username = document.getElementById('profileUsername').value;
+    let username = document.getElementById('profileUsername').value;
     const bio = document.getElementById('profileBio').value;
+    
     if (!name.trim()) {
         showToast('❌ الاسم مطلوب');
         return;
     }
+    
+    username = username.replace('@', '').trim();
+    if (!username) username = name.toLowerCase().replace(/\s/g, '');
+    
     await update(ref(db, `users/${currentUser.uid}`), {
         name: name.trim(),
-        username: username.trim() || name.trim().toLowerCase().replace(/\s/g, ''),
+        username: username,
         bio: bio
     });
     showToast('✅ تم تحديث الملف الشخصي');
@@ -490,6 +543,29 @@ window.openChatProfile = () => {
 
 window.openChatInfo = () => {
     showToast('ℹ️ معلومات المحادثة قريباً');
+};
+
+// ========== MODALS ==========
+window.openAddUserModal = () => {
+    document.getElementById('addUserModal').classList.add('open');
+    renderAllUsersList();
+    document.getElementById('addByUsername').value = '';
+    document.getElementById('searchUserResult').innerHTML = '';
+};
+
+window.closeAddUserModal = () => {
+    document.getElementById('addUserModal').classList.remove('open');
+};
+
+window.searchAll = () => {
+    const query = document.getElementById('searchUsers').value.toLowerCase();
+    const chatItems = document.querySelectorAll('.chat-item');
+    if (chatItems.length > 0) {
+        chatItems.forEach(item => {
+            const name = item.querySelector('.chat-name')?.innerText.toLowerCase() || '';
+            item.style.display = name.includes(query) ? 'flex' : 'none';
+        });
+    }
 };
 
 // ========== UTILITIES ==========
@@ -539,7 +615,6 @@ onAuthStateChanged(auth, async (user) => {
         document.getElementById('authScreen').style.display = 'none';
         document.getElementById('mainApp').style.display = 'block';
         
-        // Update sidebar avatar
         const sidebarAvatar = document.getElementById('sidebarAvatar');
         if (currentUserData?.avatarUrl) {
             sidebarAvatar.innerHTML = `<img src="${currentUserData.avatarUrl}" class="w-full h-full object-cover">`;
@@ -550,7 +625,6 @@ onAuthStateChanged(auth, async (user) => {
         if (localStorage.getItem('theme') === 'light') document.body.classList.add('light-mode');
         showToast(`👋 مرحباً ${currentUserData?.name || 'مستخدم'}`);
         
-        // Update online status every 30 seconds
         setInterval(async () => {
             if (currentUser) {
                 await update(ref(db, `users/${currentUser.uid}`), { online: true, lastSeen: Date.now() });

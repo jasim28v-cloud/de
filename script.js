@@ -1,325 +1,381 @@
-import { auth, db, collection, doc, setDoc, getDoc, getDocs, updateDoc, deleteDoc, query, where, orderBy, limit, onSnapshot, addDoc, serverTimestamp, arrayUnion, arrayRemove, CLOUD_NAME, UPLOAD_PRESET, AGORA_APP_ID } from './firebase-config.js';
-import { signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+// ========== إعدادات الأدمن ==========
+const ADMIN_EMAILS = ['jasim28v@gmail.com']; // بريد الأدمن
+let isAdmin = false;
 
-// ========== GLOBAL VARIABLES ==========
+// ========== المتغيرات العامة ==========
 let currentUser = null;
 let currentUserData = null;
-let allUsers = [];
-let activeChatUser = null;
-let activeChatId = null;
-let unsubscribeMessages = null;
-let selectedMediaFile = null;
-let mediaRecorder = null;
-let audioChunks = [];
-let replyingTo = null;
-let editingMessage = null;
-let pinnedChats = {};
-let mutedChats = {};
-let blockedUsers = {};
+let currentVideoId = null;
+let currentShareUrl = null;
+let allUsers = {};
+let allVideos = [];
+let allSounds = {};
+let isMuted = true;
+let viewingProfileUserId = null;
+let currentFeed = 'forYou';
 
-// Agora
-let agoraClient = null;
-let localTracks = null;
-
-// Emojis
-const emojis = ['😀','😃','😄','😁','😆','😅','😂','🤣','😊','😇','🙂','🙃','😉','😌','😍','🥰','😘','😗','😙','😚','😋','😛','😝','😜','🤪','🤨','🧐','🤓','😎','🤩','🥳','😏','😒','😞','😔','😟','😕','🙁','☹️','😣','😖','😫','😩','🥺','😢','😭','😤','😠','😡','🤬','🤯','😳','🥵','🥶','😱','😨','😰','😥','😓','🤗','🤔','🤭','🤫','🤥','😶','😐','😑','😬','🙄','😯','😦','😧','😮','😲','🥱','😴','🤤','😪','😵','🤐','🥴','🤢','🤮','🤧','😷','🤒','🤕','🤑','🤠','😈','👿','👹','👺','🤡','💩','👻','💀','👽','🤖','🎃','😺','😸','😹','😻','😼','😽','🙀','😿','😾','❤️','🧡','💛','💚','💙','💜','🖤','🤍','🤎','💔','❣️','💕','💞','💓','💗','💖','💘','💝','💟','👍','👎','👌','✌️','🤞','🤟','🤘','🤙','👈','👉','👆','👇','☝️','✋','🤚','🖐️','🖖','👋','🤙','💪','🦾','🖕','✍️','🙏','🦶','🦵','🦿','💄','💋','👄','🦷','👅','👂','🦻','👃','👣','👁️','👀','🧠','🦴','🦷','🦵','🦶','👅','👄'];
-
-// ========== AUTH ==========
-window.switchAuth = (type) => {
+// ========== دوال المصادقة ==========
+function switchAuth(type) {
+    document.querySelectorAll('.auth-tab').forEach(t => t.classList.remove('active'));
+    event.target.classList.add('active');
     document.querySelectorAll('.auth-form').forEach(f => f.classList.remove('active'));
-    document.getElementById(type === 'login' ? 'loginForm' : 'registerForm').classList.add('active');
-};
+    document.getElementById(type + 'Form').classList.add('active');
+}
 
-window.login = async () => {
+async function login() {
     const email = document.getElementById('loginEmail').value;
     const password = document.getElementById('loginPassword').value;
     const msg = document.getElementById('loginMsg');
-    if (!email || !password) { msg.innerText = '❌ الرجاء ملء جميع الحقول'; return; }
+    if (!email || !password) { msg.innerText = 'الرجاء ملء جميع الحقول'; return; }
+    msg.innerText = 'جاري تسجيل الدخول...';
     try {
-        await signInWithEmailAndPassword(auth, email, password);
+        await auth.signInWithEmailAndPassword(email, password);
         msg.innerText = '';
     } catch (error) {
-        msg.innerText = error.code === 'auth/user-not-found' ? '❌ لا يوجد حساب' : '❌ كلمة المرور خاطئة';
+        if (error.code === 'auth/user-not-found') msg.innerText = 'لا يوجد حساب';
+        else if (error.code === 'auth/wrong-password') msg.innerText = 'كلمة المرور غير صحيحة';
+        else msg.innerText = 'حدث خطأ';
     }
-};
+}
 
-window.register = async () => {
-    const name = document.getElementById('regName').value;
-    let username = document.getElementById('regUsername').value;
+async function register() {
+    const username = document.getElementById('regName').value;
     const email = document.getElementById('regEmail').value;
     const password = document.getElementById('regPass').value;
-    const confirm = document.getElementById('regConfirmPass').value;
     const msg = document.getElementById('regMsg');
-    
-    if (!name || !username || !email || !password) { msg.innerText = '❌ الرجاء ملء جميع الحقول'; return; }
-    if (password !== confirm) { msg.innerText = '❌ كلمة المرور غير متطابقة'; return; }
-    if (password.length < 6) { msg.innerText = '❌ كلمة المرور 6 أحرف على الأقل'; return; }
-    username = username.toLowerCase().replace(/[^a-z0-9_]/g, '');
-    if (username.length < 3) { msg.innerText = '❌ اسم المستخدم 3 أحرف على الأقل'; return; }
-    
+    if (!username || !email || !password) { msg.innerText = 'املأ جميع الحقول'; return; }
+    if (password.length < 6) { msg.innerText = 'كلمة المرور 6 أحرف على الأقل'; return; }
+    msg.innerText = 'جاري إنشاء الحساب...';
     try {
-        const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-        await setDoc(doc(db, 'users', userCredential.user.uid), {
-            name, username, email, bio: '✨ مرحباً! أنا على VibeChat', avatarUrl: '', status: 'online', lastSeen: new Date(), createdAt: new Date(),
-            pinnedChats: {}, mutedChats: {}, blockedUsers: {}
+        const userCredential = await auth.createUserWithEmailAndPassword(email, password);
+        await db.ref(`users/${userCredential.user.uid}`).set({
+            username, email, bio: '', avatarUrl: '', followers: {}, following: {}, totalLikes: 0, createdAt: Date.now()
         });
         msg.innerText = '';
     } catch (error) {
-        msg.innerText = error.code === 'auth/email-already-in-use' ? '❌ البريد مستخدم' : '❌ حدث خطأ';
+        if (error.code === 'auth/email-already-in-use') msg.innerText = 'البريد مستخدم';
+        else msg.innerText = 'حدث خطأ';
     }
-};
-
-window.logout = async () => {
-    if (currentUser) await updateDoc(doc(db, 'users', currentUser.uid), { status: 'offline', lastSeen: new Date() });
-    signOut(auth);
-    location.reload();
-};
-
-async function loadUserData() {
-    const docRef = doc(db, 'users', currentUser.uid);
-    const docSnap = await getDoc(docRef);
-    if (docSnap.exists()) {
-        currentUserData = { id: docSnap.id, ...docSnap.data() };
-        pinnedChats = currentUserData.pinnedChats || {};
-        mutedChats = currentUserData.mutedChats || {};
-        blockedUsers = currentUserData.blockedUsers || {};
-    }
-    await updateDoc(doc(db, 'users', currentUser.uid), { status: 'online', lastSeen: new Date() });
 }
 
-// ========== LOAD USERS ==========
-async function loadUsers() {
-    const usersRef = collection(db, 'users');
-    const snapshot = await getDocs(usersRef);
-    allUsers = [];
-    snapshot.docs.forEach(docSnap => {
-        if (docSnap.id !== currentUser?.uid && !blockedUsers[docSnap.id]) {
-            allUsers.push({ id: docSnap.id, ...docSnap.data() });
-        }
-    });
-    renderUsersList();
+function logout() { auth.signOut(); location.reload(); }
+
+// ========== التحقق من الأدمن ==========
+function checkAdminStatus() {
+    if (currentUser && ADMIN_EMAILS.includes(currentUser.email)) {
+        isAdmin = true;
+        console.log('✅ Admin mode activated for:', currentUser.email);
+        return true;
+    }
+    isAdmin = false;
+    return false;
 }
 
-function renderUsersList() {
-    if (allUsers.length === 0) {
-        usersContainer.innerHTML = '<div class="text-center text-gray-500 py-10">لا يوجد مستخدمين</div>';
-        return;
-    }
-    const sortedUsers = [...allUsers].sort((a, b) => (pinnedChats[a.id] ? -1 : 1));
-    usersContainer.innerHTML = sortedUsers.map(user => `
-        <div class="user-item ${activeChatUser?.id === user.id ? 'active' : ''}" onclick="selectUser('${user.id}')">
-            <div class="user-avatar">${user.avatarUrl ? `<img src="${user.avatarUrl}">` : `<i class="fas fa-user"></i>`}</div>
-            <div class="user-info">
-                <div class="user-name">${escapeHtml(user.name)} ${pinnedChats[user.id] ? '📌' : ''}</div>
-                <div class="user-username">@${escapeHtml(user.username)}</div>
-                <div class="user-status">${user.status === 'online' ? '🟢 متصل' : '📅 غير متصل'}</div>
+// ========== دوال الأدمن ==========
+async function renderAdminPanel() {
+    if (!isAdmin) return '';
+    const usersSnap = await db.ref('users').once('value');
+    const users = usersSnap.val() || {};
+    const videosSnap = await db.ref('videos').once('value');
+    const videos = videosSnap.val() || {};
+    const totalLikes = Object.values(videos).reduce((sum, v) => sum + (v.likes || 0), 0);
+    const bannedUsers = Object.values(users).filter(u => u.banned).length;
+    return `
+        <div class="admin-panel-section">
+            <h3 style="color:#fe2c55;font-weight:bold;margin-bottom:16px;display:flex;align-items:center;gap:8px"><i class="fas fa-shield-alt"></i> لوحة تحكم الأدمن</h3>
+            <div class="admin-stats">
+                <div class="admin-stat-card"><div class="admin-stat-number">${Object.keys(users).length}</div><div class="admin-stat-label">مستخدمين</div></div>
+                <div class="admin-stat-card"><div class="admin-stat-number">${Object.keys(videos).length}</div><div class="admin-stat-label">فيديوهات</div></div>
+                <div class="admin-stat-card"><div class="admin-stat-number">${totalLikes}</div><div class="admin-stat-label">إجمالي الإعجابات</div></div>
+                <div class="admin-stat-card"><div class="admin-stat-number">${bannedUsers}</div><div class="admin-stat-label">محظورين</div></div>
             </div>
+            <div style="margin-bottom:20px"><h4 style="font-weight:bold;margin-bottom:12px">🗑️ حذف فيديوهات</h4><div class="admin-list">${Object.entries(videos).reverse().slice(0, 15).map(([id, v]) => `
+                <div class="admin-item"><div class="admin-item-info"><div class="admin-item-avatar"><i class="fas fa-video"></i></div><div class="admin-item-text"><div class="admin-item-name">${v.description?.substring(0, 35) || 'فيديو'}</div><div class="admin-item-email">@${v.senderName || 'user'}</div></div></div><button class="admin-delete-btn" onclick="adminDeleteVideo('${id}')">حذف</button></div>
+            `).join('')}</div>${Object.keys(videos).length > 15 ? `<p class="text-center text-xs opacity-60 mt-2">+${Object.keys(videos).length - 15} فيديو آخر</p>` : ''}</div>
+            <div><h4 style="font-weight:bold;margin-bottom:12px">👥 إدارة المستخدمين</h4><div class="admin-list">${Object.entries(users).slice(0, 15).map(([uid, u]) => `
+                <div class="admin-item"><div class="admin-item-info"><div class="admin-item-avatar">${u.avatarUrl ? `<img src="${u.avatarUrl}">` : (u.username?.charAt(0) || 'U')}</div><div class="admin-item-text"><div class="admin-item-name">@${u.username} ${u.banned ? '<span style="background:#fe2c55;padding:2px 6px;border-radius:12px;font-size:9px;margin-left:5px">محظور</span>' : ''}</div><div class="admin-item-email">${u.email || ''}</div></div></div><div>${!u.banned ? `<button class="admin-ban-btn" onclick="adminBanUser('${uid}')">حظر</button>` : `<button class="admin-ban-btn" style="background:rgba(76,175,80,0.3);color:#4caf50" onclick="adminUnbanUser('${uid}')">إلغاء الحظر</button>`}<button class="admin-delete-btn" onclick="adminDeleteUser('${uid}')">حذف</button></div></div>
+            `).join('')}</div></div>
         </div>
-    `).join('');
+    `;
 }
 
-window.searchUsers = () => {
-    const query = searchUserInput.value.toLowerCase();
-    document.querySelectorAll('.user-item').forEach(item => {
-        const name = item.querySelector('.user-name')?.innerText.toLowerCase() || '';
-        item.style.display = name.includes(query) ? 'flex' : 'none';
+async function adminDeleteVideo(videoId) { if (!isAdmin) return; if (confirm('حذف الفيديو؟')) { await db.ref(`videos/${videoId}`).remove(); alert('✅ تم الحذف'); location.reload(); } }
+async function adminBanUser(userId) { if (!isAdmin) return; if (confirm('حظر المستخدم؟')) { await db.ref(`users/${userId}/banned`).set(true); alert('✅ تم الحظر'); location.reload(); } }
+async function adminUnbanUser(userId) { if (!isAdmin) return; if (confirm('إلغاء الحظر؟')) { await db.ref(`users/${userId}/banned`).remove(); alert('✅ تم إلغاء الحظر'); location.reload(); } }
+async function adminDeleteUser(userId) { if (!isAdmin) return; if (confirm('حذف المستخدم وجميع فيديوهاته؟')) { const videosSnap = await db.ref('videos').once('value'); const videos = videosSnap.val() || {}; Object.entries(videos).forEach(([id, v]) => { if (v.sender === userId) db.ref(`videos/${id}`).remove(); }); await db.ref(`users/${userId}`).remove(); alert('✅ تم الحذف'); location.reload(); } }
+
+// ========== تحميل البيانات ==========
+async function loadUserData() { const snap = await db.ref(`users/${currentUser.uid}`).get(); if (snap.exists()) currentUserData = { uid: currentUser.uid, ...snap.val() }; }
+db.ref('users').on('value', s => { allUsers = s.val() || {}; });
+
+// ========== هاشتاقات ==========
+function addHashtags(text) { if (!text) return ''; return text.replace(/#(\w+)/g, '<span class="hashtag" onclick="searchHashtag(\'$1\')">#$1</span>'); }
+function searchHashtag(tag) { document.getElementById('searchInput').value = '#' + tag; openSearch(); searchAll(); }
+
+// ========== عرض الفيديوهات ==========
+db.ref('videos').on('value', (s) => {
+    const data = s.val();
+    if (!data) { allVideos = []; renderVideos(); return; }
+    allVideos = []; allSounds = {};
+    Object.keys(data).forEach(key => { const v = { id: key, ...data[key] }; allVideos.push(v); if (v.music) allSounds[v.music] = (allSounds[v.music] || 0) + 1; });
+    allVideos.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+    renderVideos(); renderSoundsList();
+});
+
+function renderVideos() {
+    const container = document.getElementById('videosContainer'); if (!container) return;
+    container.innerHTML = '';
+    let filteredVideos = currentFeed === 'forYou' ? allVideos : allVideos.filter(v => currentUserData?.following?.[v.sender]);
+    if (filteredVideos.length === 0) { container.innerHTML = '<div class="loading"><div class="spinner"></div><span>' + (currentFeed === 'forYou' ? 'لا توجد فيديوهات' : 'تابع مستخدمين لرؤية فيديوهاتهم') + '</span></div>'; return; }
+    filteredVideos.forEach(video => {
+        const isLiked = video.likedBy && video.likedBy[currentUser?.uid];
+        const user = allUsers[video.sender] || { username: video.senderName || 'user', avatarUrl: '' };
+        const isFollowing = currentUserData?.following && currentUserData.following[video.sender];
+        const commentsCount = video.comments ? Object.keys(video.comments).length : 0;
+        const caption = addHashtags(video.description || '');
+        const avatarHtml = (user.avatarUrl && user.avatarUrl !== '') ? `<img src="${user.avatarUrl}">` : (user.username?.charAt(0)?.toUpperCase() || '👤');
+        const div = document.createElement('div'); div.className = 'video-item';
+        div.innerHTML = `
+            <video loop playsinline muted data-src="${video.url}" poster="${video.thumbnail || ''}"></video>
+            <div class="video-info">
+                <div class="author-info"><div class="author-avatar" onclick="viewProfile('${video.sender}')">${avatarHtml}</div><div class="author-name"><span onclick="viewProfile('${video.sender}')">@${user.username}</span>${currentUser?.uid !== video.sender ? `<button class="follow-btn" onclick="toggleFollow('${video.sender}', this)">${isFollowing ? 'متابع' : 'متابعة'}</button>` : ''}</div></div>
+                <div class="video-caption">${caption}</div>
+                <div class="video-music" onclick="searchBySound('${video.music || 'Original Sound'}')"><i class="fas fa-music"></i> ${video.music || 'Original Sound'}</div>
+            </div>
+            <div class="side-actions">
+                <button class="side-btn" onclick="toggleGlobalMute()"><i class="fas ${isMuted ? 'fa-volume-mute' : 'fa-volume-up'}"></i></button>
+                <button class="side-btn like-btn ${isLiked ? 'active' : ''}" onclick="toggleLike('${video.id}', this)"><i class="fas fa-heart"></i><span class="count">${video.likes || 0}</span></button>
+                <button class="side-btn" onclick="openComments('${video.id}')"><i class="fas fa-comment"></i><span class="count">${commentsCount}</span></button>
+                <button class="side-btn" onclick="openShare('${video.url}')"><i class="fas fa-share"></i></button>
+            </div>
+        `;
+        const videoEl = div.querySelector('video');
+        videoEl.addEventListener('dblclick', (e) => { e.stopPropagation(); const likeBtn = div.querySelector('.like-btn'); if (likeBtn) { toggleLike(video.id, likeBtn); showHeartAnimation(e.clientX, e.clientY); } });
+        container.appendChild(div);
     });
-};
+    initVideoObserver();
+}
+function showHeartAnimation(x, y) { const heart = document.createElement('div'); heart.className = 'heart-animation'; heart.innerHTML = '❤️'; heart.style.left = (x - 40) + 'px'; heart.style.top = (y - 40) + 'px'; document.body.appendChild(heart); setTimeout(() => heart.remove(), 800); }
+function initVideoObserver() { const observer = new IntersectionObserver((entries) => { entries.forEach(entry => { const video = entry.target.querySelector('video'); if (entry.isIntersecting) { if (!video.src) video.src = video.dataset.src; video.muted = isMuted; video.play().catch(() => {}); } else video.pause(); }); }, { threshold: 0.65 }); document.querySelectorAll('.video-item').forEach(seg => observer.observe(seg)); }
+function toggleGlobalMute() { isMuted = !isMuted; document.querySelectorAll('video').forEach(v => v.muted = isMuted); const btns = document.querySelectorAll('.side-actions .side-btn:first-child i'); btns.forEach(btn => btn.className = isMuted ? 'fas fa-volume-mute' : 'fas fa-volume-up'); }
+function switchFeed(feed) { currentFeed = feed; document.querySelectorAll('.top-tab').forEach(t => t.classList.remove('active')); event.target.classList.add('active'); renderVideos(); }
 
-// ========== SELECT USER ==========
-window.selectUser = async (userId) => {
-    if (unsubscribeMessages) unsubscribeMessages();
-    if (blockedUsers[userId]) { showToast('⚠️ هذا المستخدم محظور', true); return; }
-    
-    const selectedUser = allUsers.find(u => u.id === userId);
-    if (!selectedUser) return;
-    
-    activeChatUser = selectedUser;
-    activeChatId = currentUser.uid < userId ? `${currentUser.uid}_${userId}` : `${userId}_${currentUser.uid}`;
-    
-    const chatRef = doc(db, 'chats', activeChatId);
-    const chatSnap = await getDoc(chatRef);
-    if (!chatSnap.exists()) await setDoc(chatRef, { participants: [currentUser.uid, userId], createdAt: new Date() });
-    
-    chatHeader.style.display = 'flex';
-    inputArea.style.display = 'flex';
-    chatName.innerText = selectedUser.name;
-    chatStatus.innerText = selectedUser.status === 'online' ? '🟢 متصل الآن' : 'غير متصل';
-    chatAvatar.innerHTML = selectedUser.avatarUrl ? `<img src="${selectedUser.avatarUrl}">` : `<i class="fas fa-user"></i>`;
-    document.getElementById('pinChatBtn').style.color = pinnedChats[userId] ? '#00a884' : '#aebac1';
-    document.getElementById('muteChatBtn').style.color = mutedChats[userId] ? '#00a884' : '#aebac1';
-    
-    renderUsersList();
-    loadMessages();
-    loadPinnedMessage();
-};
+// ========== الإعجاب ==========
+async function toggleLike(videoId, btn) { if (!currentUser) return; const videoRef = db.ref(`videos/${videoId}`); const snap = await videoRef.get(); const video = snap.val(); if (!video) return; let likes = video.likes || 0; let likedBy = video.likedBy || {}; if (likedBy[currentUser.uid]) { likes--; delete likedBy[currentUser.uid]; } else { likes++; likedBy[currentUser.uid] = true; await addNotification(video.sender, 'like', currentUser.uid); } await videoRef.update({ likes, likedBy }); btn.classList.toggle('active'); const countSpan = btn.querySelector('.count'); if (countSpan) countSpan.innerText = likes; }
 
-// ========== MESSAGES ==========
-function loadMessages() {
-    const messagesRef = collection(db, 'chats', activeChatId, 'messages');
-    const q = query(messagesRef, orderBy('timestamp', 'asc'));
-    
-    messagesArea.innerHTML = '<div class="loading"><div class="spinner"></div><span>جاري التحميل...</span></div>';
-    
-    unsubscribeMessages = onSnapshot(q, (snapshot) => {
-        if (snapshot.empty) { messagesArea.innerHTML = '<div class="text-center text-gray-500 py-10">💬 لا توجد رسائل بعد</div>'; return; }
-        
-        messagesArea.innerHTML = '';
-        snapshot.forEach(docSnap => {
-            const msg = docSnap.data();
-            const isSent = msg.senderId === currentUser.uid;
-            const time = msg.timestamp?.toDate ? new Date(msg.timestamp.toDate()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
-            let content = '';
-            
-            if (msg.text) {
-                content = `<div class="message-bubble">${escapeHtml(msg.text)}</div>`;
-            } else if (msg.media) {
-                if (msg.media.type === 'image') content = `<div class="message-media" onclick="openImageModal('${msg.media.url}')"><img src="${msg.media.url}"></div>`;
-                else if (msg.media.type === 'video') content = `<div class="message-media"><video controls src="${msg.media.url}"></video></div>`;
-                else if (msg.media.type === 'audio') content = `<div class="message-audio"><audio controls src="${msg.media.url}"></audio></div>`;
-                else if (msg.media.type === 'file') content = `<div class="message-media"><a href="${msg.media.url}" target="_blank" class="text-[#00a884]">📎 ${msg.media.name}</a></div>`;
-            }
-            
-            messagesArea.innerHTML += `
-                <div class="message ${isSent ? 'sent' : 'received'}" data-message-id="${docSnap.id}" data-message-text="${escapeHtml(msg.text || '')}">
-                    <div>
-                        ${msg.replyTo ? `<div class="reply-preview">↩️ رد على: ${escapeHtml(msg.replyTo.text?.substring(0, 50) || 'رسالة')}</div>` : ''}
-                        ${content}
-                        <div class="message-time">${time} ${msg.edited ? '(معدلة)' : ''}</div>
-                    </div>
-                    <div class="message-actions">
-                        <button class="message-action" onclick="replyToMessage('${docSnap.id}', '${escapeHtml(msg.text || 'وسائط')}')"><i class="fas fa-reply"></i></button>
-                        ${isSent ? `<button class="message-action" onclick="editMessage('${docSnap.id}', '${escapeHtml(msg.text || '')}')"><i class="fas fa-edit"></i></button>` : ''}
-                        ${isSent ? `<button class="message-action" onclick="deleteMessage('${docSnap.id}')"><i class="fas fa-trash"></i></button>` : ''}
-                        <button class="message-action" onclick="pinMessage('${docSnap.id}', '${escapeHtml(msg.text || 'وسائط')}')"><i class="fas fa-thumbtack"></i></button>
-                        <button class="message-action" onclick="forwardMessage('${docSnap.id}', '${escapeHtml(msg.text || 'وسائط')}', '${msg.media ? JSON.stringify(msg.media).replace(/'/g, "\\'") : ''}')"><i class="fas fa-share"></i></button>
-                    </div>
+// ========== المتابعة ==========
+async function toggleFollow(userId, btn) { if (!currentUser || currentUser.uid === userId) return; const userRef = db.ref(`users/${currentUser.uid}/following/${userId}`); const targetRef = db.ref(`users/${userId}/followers/${currentUser.uid}`); const snap = await userRef.get(); if (snap.exists()) { await userRef.remove(); await targetRef.remove(); btn.innerText = 'متابعة'; await addNotification(userId, 'unfollow', currentUser.uid); } else { await userRef.set(true); await targetRef.set(true); btn.innerText = 'متابع'; await addNotification(userId, 'follow', currentUser.uid); } if (viewingProfileUserId === userId) await loadProfileData(userId); }
+
+// ========== التعليقات ==========
+async function openComments(videoId) { currentVideoId = videoId; const panel = document.getElementById('commentsPanel'); const commentsRef = db.ref(`videos/${videoId}/comments`); const snap = await commentsRef.get(); const comments = snap.val() || {}; const container = document.getElementById('commentsList'); container.innerHTML = ''; Object.values(comments).reverse().forEach(c => { const user = allUsers[c.userId] || { username: c.username || 'user', avatarUrl: '' }; const avatarHtml = (user.avatarUrl && user.avatarUrl !== '') ? `<img src="${user.avatarUrl}">` : (user.username?.charAt(0)?.toUpperCase() || '👤'); container.innerHTML += `<div class="comment-item"><div class="comment-avatar">${avatarHtml}</div><div><div class="font-bold">@${user.username}</div><div class="text-sm mt-1">${c.text}</div></div></div>`; }); panel.classList.add('open'); }
+function closeComments() { document.getElementById('commentsPanel').classList.remove('open'); }
+async function addComment() { const input = document.getElementById('commentInput'); if (!input.value.trim() || !currentVideoId) return; await db.ref(`videos/${currentVideoId}/comments`).push({ userId: currentUser.uid, username: currentUserData?.username, text: input.value, timestamp: Date.now() }); input.value = ''; openComments(currentVideoId); }
+
+// ========== المشاركة ==========
+function openShare(url) { currentShareUrl = url; document.getElementById('sharePanel').classList.add('open'); }
+function closeShare() { document.getElementById('sharePanel').classList.remove('open'); }
+function copyLink() { navigator.clipboard.writeText(currentShareUrl); showToast(); closeShare(); }
+function shareToWhatsApp() { window.open(`https://wa.me/?text=${encodeURIComponent(currentShareUrl)}`, '_blank'); closeShare(); }
+function shareToTelegram() { window.open(`https://t.me/share/url?url=${encodeURIComponent(currentShareUrl)}`, '_blank'); closeShare(); }
+function downloadVideo() { window.open(currentShareUrl, '_blank'); closeShare(); }
+function showToast() { const t = document.getElementById('copyToast'); t.classList.add('show'); setTimeout(() => t.classList.remove('show'), 2000); }
+
+// ========== الإشعارات ==========
+async function addNotification(targetUserId, type, fromUserId) { if (targetUserId === fromUserId) return; const fromUser = allUsers[fromUserId] || { username: 'مستخدم' }; const messages = { like: 'أعجب بفيديو الخاص بك', comment: 'علق على فيديو الخاص بك', follow: 'بدأ بمتابعتك', unfollow: 'توقف عن متابعتك' }; await db.ref(`notifications/${targetUserId}`).push({ type, fromUserId, fromUsername: fromUser.username, message: messages[type], timestamp: Date.now(), read: false }); }
+async function openNotifications() { const panel = document.getElementById('notificationsPanel'); const snap = await db.ref(`notifications/${currentUser.uid}`).once('value'); const notifs = snap.val() || {}; const container = document.getElementById('notificationsList'); container.innerHTML = ''; Object.values(notifs).reverse().forEach(n => { container.innerHTML += `<div class="notification-item"><i class="fas ${n.type === 'like' ? 'fa-heart text-red-500' : n.type === 'comment' ? 'fa-comment' : 'fa-user-plus'}"></i><div><div>${n.fromUsername}</div><div class="text-xs opacity-60">${n.message}</div></div></div>`; if (!n.read) db.ref(`notifications/${currentUser.uid}/${Object.keys(notifs).find(k => notifs[k] === n)}/read`).set(true); }); panel.classList.add('open'); }
+function closeNotifications() { document.getElementById('notificationsPanel').classList.remove('open'); }
+
+// ========== البحث ==========
+function openSearch() { document.getElementById('searchPanel').classList.add('open'); }
+function closeSearch() { document.getElementById('searchPanel').classList.remove('open'); }
+function searchAll() { const query = document.getElementById('searchInput').value.toLowerCase(); const resultsDiv = document.getElementById('searchResults'); if (!query) { resultsDiv.innerHTML = ''; return; } const users = Object.values(allUsers).filter(u => u.username.toLowerCase().includes(query)); const videos = allVideos.filter(v => v.description?.toLowerCase().includes(query) || v.music?.toLowerCase().includes(query)); const hashtags = [...new Set(allVideos.flatMap(v => (v.description?.match(/#\w+/g) || []).filter(h => h.toLowerCase().includes(query))))]; resultsDiv.innerHTML = `${users.length ? `<div class="mb-5"><h4 class="text-sm opacity-60 mb-2">👥 مستخدمين</h4>${users.map(u => `<div class="search-result" onclick="viewProfile('${u.uid}')"><div class="search-avatar">${u.avatarUrl ? `<img src="${u.avatarUrl}">` : (u.username.charAt(0)?.toUpperCase() || '👤')}</div><div>@${u.username}</div></div>`).join('')}</div>` : ''}${hashtags.length ? `<div class="mb-5"><h4 class="text-sm opacity-60 mb-2"># هاشتاقات</h4>${hashtags.map(h => `<div class="search-result" onclick="searchHashtag('${h.substring(1)}')"><i class="fas fa-hashtag text-[#fe2c55] w-8 text-xl"></i><div>${h}</div></div>`).join('')}</div>` : ''}${videos.length ? `<div><h4 class="text-sm opacity-60 mb-2">🎬 فيديوهات</h4>${videos.map(v => `<div class="search-result" onclick="playVideo('${v.url}')"><i class="fas fa-video w-8 text-xl"></i><div>${(v.description || 'فيديو').substring(0, 40)}</div></div>`).join('')}</div>` : ''}`; }
+
+// ========== الأصوات ==========
+function openSounds() { document.getElementById('soundsPanel').classList.add('open'); }
+function closeSounds() { document.getElementById('soundsPanel').classList.remove('open'); }
+function renderSoundsList() { const container = document.getElementById('soundsList'); if (!container) return; const sortedSounds = Object.entries(allSounds).sort((a, b) => b[1] - a[1]); container.innerHTML = sortedSounds.map(([name, count]) => `<div class="sound-item" onclick="searchBySound('${name}')"><div class="sound-icon"><i class="fas fa-music"></i></div><div class="sound-info"><div class="sound-name">${name}</div><div class="sound-count">${count} فيديو</div></div></div>`).join(''); }
+function searchBySound(soundName) { document.getElementById('searchInput').value = soundName; closeSounds(); openSearch(); searchAll(); }
+
+// ========== الملف الشخصي ==========
+async function viewProfile(userId) { if (!userId) return; viewingProfileUserId = userId; await loadProfileData(userId); document.getElementById('profilePanel').classList.add('open'); }
+async function loadProfileData(userId) {
+    const userSnap = await db.ref(`users/${userId}`).get(); const user = userSnap.val(); if (!user) return;
+    const avatarDisplay = document.getElementById('profileAvatarDisplay'); if (user.avatarUrl && user.avatarUrl !== '') avatarDisplay.innerHTML = `<img src="${user.avatarUrl}">`; else avatarDisplay.innerHTML = user.username?.charAt(0)?.toUpperCase() || '👤';
+    document.getElementById('profileNameDisplay').innerText = user.username || 'مستخدم'; document.getElementById('profileBioDisplay').innerText = user.bio || '';
+    document.getElementById('profileFollowing').innerText = Object.keys(user.following || {}).length; document.getElementById('profileFollowers').innerText = Object.keys(user.followers || {}).length;
+    const userVideos = allVideos.filter(v => v.sender === userId); const totalLikes = userVideos.reduce((sum, v) => sum + (v.likes || 0), 0); document.getElementById('profileLikes').innerText = totalLikes;
+    const container = document.getElementById('profileVideosList'); container.innerHTML = ''; if (userVideos.length === 0) container.innerHTML = '<div class="text-center text-gray-400 py-10">لا توجد فيديوهات بعد</div>'; else userVideos.forEach(v => { const thumb = document.createElement('div'); thumb.className = 'video-thumb'; thumb.innerHTML = '<i class="fas fa-play"></i>'; thumb.onclick = () => playVideo(v.url); container.appendChild(thumb); });
+    const actionsDiv = document.getElementById('profileActions'); actionsDiv.innerHTML = '';
+    if (userId === currentUser?.uid) { actionsDiv.innerHTML = `<button class="edit-profile-btn" onclick="openEditProfile()">تعديل الملف الشخصي</button><button class="logout-btn" onclick="logout()">تسجيل خروج</button>`; if (isAdmin) { const adminPanel = await renderAdminPanel(); actionsDiv.innerHTML += adminPanel; } }
+    else { const isFollowing = currentUserData?.following && currentUserData.following[userId]; actionsDiv.innerHTML = `<button class="follow-btn" onclick="toggleFollow('${userId}', this)">${isFollowing ? 'متابع' : 'متابعة'}</button>`; addMessageButtonInProfile(userId); }
+}
+function openMyProfile() { if (currentUser) viewProfile(currentUser.uid); }
+function closeProfile() { document.getElementById('profilePanel').classList.remove('open'); viewingProfileUserId = null; }
+function openEditProfile() { document.getElementById('editUsername').value = currentUserData?.username || ''; document.getElementById('editBio').value = currentUserData?.bio || ''; const editAvatar = document.getElementById('editAvatarDisplay'); if (currentUserData?.avatarUrl) editAvatar.innerHTML = `<img src="${currentUserData.avatarUrl}">`; else editAvatar.innerHTML = currentUserData?.username?.charAt(0)?.toUpperCase() || '👤'; document.getElementById('editProfilePanel').classList.add('open'); }
+function closeEditProfile() { document.getElementById('editProfilePanel').classList.remove('open'); }
+async function saveProfile() { const newUsername = document.getElementById('editUsername').value; const newBio = document.getElementById('editBio').value; await db.ref(`users/${currentUser.uid}`).update({ username: newUsername, bio: newBio }); currentUserData.username = newUsername; currentUserData.bio = newBio; closeEditProfile(); if (viewingProfileUserId === currentUser.uid) await loadProfileData(currentUser.uid); renderVideos(); }
+function changeAvatar() { document.getElementById('avatarInput').click(); }
+async function uploadAvatar(input) { const file = input.files[0]; if (!file) return; const fd = new FormData(); fd.append('file', file); fd.append('upload_preset', UPLOAD_PRESET); const res = await fetch(`https://api.cloudinary.com/v1_1/${CLOUD_NAME}/image/upload`, { method: 'POST', body: fd }); const data = await res.json(); await db.ref(`users/${currentUser.uid}/avatarUrl`).set(data.secure_url); currentUserData.avatarUrl = data.secure_url; if (viewingProfileUserId === currentUser.uid) await loadProfileData(currentUser.uid); renderVideos(); }
+function playVideo(url) { window.open(url, '_blank'); }
+
+// ========== الدردشة الخاصة ==========
+let currentChatUserId = null;
+
+async function openConversations() {
+    const panel = document.getElementById('conversationsPanel');
+    const container = document.getElementById('conversationsList');
+    const userId = currentUser.uid;
+    const convSnap = await db.ref(`private_chats/${userId}`).once('value');
+    const conversations = convSnap.val() || {};
+    container.innerHTML = '';
+    for (const [otherId, convData] of Object.entries(conversations)) {
+        const otherUser = allUsers[otherId];
+        if (!otherUser) continue;
+        const lastMsg = convData.lastMessage || '';
+        container.innerHTML += `
+            <div class="conversation-item" onclick="openPrivateChat('${otherId}')">
+                <div class="conversation-avatar">${otherUser.avatarUrl ? `<img src="${otherUser.avatarUrl}">` : (otherUser.username?.charAt(0) || '👤')}</div>
+                <div class="conversation-info">
+                    <div class="conversation-name">@${otherUser.username}</div>
+                    <div class="conversation-last-msg">${lastMsg.substring(0, 30)}</div>
                 </div>
-            `;
-        });
-        messagesArea.scrollTop = messagesArea.scrollHeight;
-        if (!mutedChats[activeChatUser?.id]) sendNotification(activeChatUser?.name, snapshot.docs[snapshot.docs.length-1]?.data()?.text);
-    });
-}
-
-window.sendMessage = async () => {
-    const text = messageInput.value.trim();
-    if (!text && !selectedMediaFile) return;
-    if (!activeChatId) { showToast('❌ اختر مستخدم أولاً', true); return; }
-    
-    let media = null;
-    if (selectedMediaFile) {
-        showToast('📤 جاري الرفع...');
-        try {
-            const result = await uploadMedia(selectedMediaFile);
-            media = { url: result.url, type: result.type === 'image' || result.type === 'video' || result.type === 'audio' ? result.type : 'file', name: selectedMediaFile.name };
-            selectedMediaFile = null;
-        } catch (error) { showToast('❌ فشل رفع الملف', true); return; }
+            </div>
+        `;
     }
-    
-    const messageData = { senderId: currentUser.uid, text: text || null, media, timestamp: new Date(), read: false };
-    if (replyingTo) { messageData.replyTo = replyingTo; replyingTo = null; hideReplyPreview(); }
-    if (editingMessage) { await updateDoc(doc(db, 'chats', activeChatId, 'messages', editingMessage.id), { text: text, edited: true }); editingMessage = null; messageInput.value = ''; return; }
-    
-    await addDoc(collection(db, 'chats', activeChatId, 'messages'), messageData);
-    await updateDoc(doc(db, 'chats', activeChatId), { lastMessage: text || (media?.type === 'image' ? '📷 صورة' : media?.type === 'video' ? '🎥 فيديو' : '📎 ملف'), lastMessageTime: new Date() });
-    messageInput.value = '';
-};
+    if (container.innerHTML === '') container.innerHTML = '<div class="text-center text-gray-400 py-10">لا توجد محادثات بعد</div>';
+    panel.classList.add('open');
+}
+function closeConversations() { document.getElementById('conversationsPanel').classList.remove('open'); }
+async function openPrivateChat(otherUserId) {
+    currentChatUserId = otherUserId;
+    const user = allUsers[otherUserId];
+    document.getElementById('chatUserName').innerText = `@${user?.username || 'مستخدم'}`;
+    document.getElementById('chatAvatarDisplay').innerHTML = user?.avatarUrl ? `<img src="${user.avatarUrl}" class="w-full h-full object-cover rounded-full">` : (user?.username?.charAt(0) || '👤');
+    await loadPrivateMessages(otherUserId);
+    document.getElementById('privateChatPanel').classList.add('open');
+    closeConversations();
+}
+function closePrivateChat() { document.getElementById('privateChatPanel').classList.remove('open'); currentChatUserId = null; }
+async function loadPrivateMessages(otherUserId) {
+    const container = document.getElementById('privateMessagesList');
+    container.innerHTML = '<div class="text-center text-gray-400 py-10">جاري التحميل...</div>';
+    const chatId = getChatId(currentUser.uid, otherUserId);
+    const messagesSnap = await db.ref(`private_messages/${chatId}`).once('value');
+    const messages = messagesSnap.val() || {};
+    container.innerHTML = '';
+    const sortedMessages = Object.entries(messages).sort((a, b) => a[1].timestamp - b[1].timestamp);
+    for (const [msgId, msg] of sortedMessages) {
+        const isSent = msg.senderId === currentUser.uid;
+        const time = new Date(msg.timestamp).toLocaleTimeString();
+        let content = '';
+        if (msg.type === 'text') content = `<div class="message-bubble ${isSent ? 'sent' : 'received'}">${msg.text}</div>`;
+        else if (msg.type === 'image') content = `<img src="${msg.imageUrl}" class="message-image" onclick="window.open('${msg.imageUrl}')">`;
+        container.innerHTML += `<div class="private-message ${isSent ? 'sent' : 'received'}"><div class="message-content">${content}<div class="message-time">${time}</div></div></div>`;
+    }
+    if (container.innerHTML === '') container.innerHTML = '<div class="text-center text-gray-400 py-10">لا توجد رسائل بعد</div>';
+    container.scrollTop = container.scrollHeight;
+}
+async function sendPrivateMessage() {
+    const input = document.getElementById('privateMessageInput');
+    const text = input.value.trim();
+    if (!text || !currentChatUserId) return;
+    const chatId = getChatId(currentUser.uid, currentChatUserId);
+    const message = { senderId: currentUser.uid, senderName: currentUserData?.username, text: text, type: 'text', timestamp: Date.now(), read: false };
+    await db.ref(`private_messages/${chatId}`).push(message);
+    await db.ref(`private_chats/${currentUser.uid}/${currentChatUserId}`).set({ lastMessage: text, lastTimestamp: Date.now(), withUser: currentChatUserId });
+    await db.ref(`private_chats/${currentChatUserId}/${currentUser.uid}`).set({ lastMessage: text, lastTimestamp: Date.now(), withUser: currentUser.uid });
+    input.value = '';
+    await loadPrivateMessages(currentChatUserId);
+}
+async function sendChatImage(input) {
+    const file = input.files[0];
+    if (!file || !currentChatUserId) return;
+    const fd = new FormData(); fd.append('file', file); fd.append('upload_preset', UPLOAD_PRESET);
+    const res = await fetch(`https://api.cloudinary.com/v1_1/${CLOUD_NAME}/image/upload`, { method: 'POST', body: fd });
+    const data = await res.json();
+    const chatId = getChatId(currentUser.uid, currentChatUserId);
+    const message = { senderId: currentUser.uid, senderName: currentUserData?.username, imageUrl: data.secure_url, type: 'image', timestamp: Date.now(), read: false };
+    await db.ref(`private_messages/${chatId}`).push(message);
+    await db.ref(`private_chats/${currentUser.uid}/${currentChatUserId}`).set({ lastMessage: '📷 صورة', lastTimestamp: Date.now(), withUser: currentChatUserId });
+    await db.ref(`private_chats/${currentChatUserId}/${currentUser.uid}`).set({ lastMessage: '📷 صورة', lastTimestamp: Date.now(), withUser: currentUser.uid });
+    input.value = '';
+    await loadPrivateMessages(currentChatUserId);
+}
+function addMessageButtonInProfile(userId) {
+    const actionsDiv = document.getElementById('profileActions');
+    if (actionsDiv && userId !== currentUser?.uid) {
+        const existingBtn = document.getElementById('msgProfileBtn');
+        if (!existingBtn) {
+            const msgBtn = document.createElement('button');
+            msgBtn.id = 'msgProfileBtn';
+            msgBtn.className = 'edit-profile-btn ml-2';
+            msgBtn.innerHTML = '<i class="fas fa-envelope"></i> رسالة';
+            msgBtn.onclick = () => openPrivateChat(userId);
+            actionsDiv.appendChild(msgBtn);
+        }
+    }
+}
+function getChatId(uid1, uid2) { return uid1 < uid2 ? `${uid1}_${uid2}` : `${uid2}_${uid1}`; }
+db.ref(`private_messages`).on('child_added', async (snapshot) => {
+    const chatId = snapshot.key;
+    if (currentChatUserId && chatId === getChatId(currentUser.uid, currentChatUserId)) await loadPrivateMessages(currentChatUserId);
+    if (document.getElementById('conversationsPanel').classList.contains('open')) openConversations();
+});
 
-async function uploadMedia(file) {
-    const formData = new FormData();
-    formData.append('file', file);
-    formData.append('upload_preset', UPLOAD_PRESET);
-    let resourceType = 'image';
-    if (file.type.startsWith('video/')) resourceType = 'video';
-    else if (file.type.startsWith('audio/')) resourceType = 'raw';
-    formData.append('resource_type', resourceType);
-    const url = `https://api.cloudinary.com/v1_1/${CLOUD_NAME}/${resourceType}/upload`;
-    const response = await fetch(url, { method: 'POST', body: formData });
-    const data = await response.json();
-    return { url: data.secure_url, type: resourceType === 'raw' ? 'audio' : resourceType };
+// ========== رفع الفيديو المحسن ==========
+let selectedVideoFile = null;
+let popularHashtags = ['تيك_توك', 'ترند', 'اكسبلور', 'فن', 'موسيقى', 'ضحك', 'رياضة', 'طبخ', 'سفر', 'تحدي'];
+let popularMusics = ['Original Sound', 'موسيقى هادئة', 'ريمكس ترند', 'أغنية جديدة', 'تيك توك ريمكس'];
+
+function openUploadPanel() { document.getElementById('uploadPanel').classList.add('open'); resetUploadForm(); }
+function closeUploadPanel() { document.getElementById('uploadPanel').classList.remove('open'); resetUploadForm(); }
+function resetUploadForm() { selectedVideoFile = null; document.getElementById('videoPreview').style.display = 'none'; document.querySelector('.preview-placeholder').style.display = 'block'; document.getElementById('videoDescription').value = ''; document.getElementById('videoMusic').value = ''; document.getElementById('uploadProgressBar').style.display = 'none'; document.getElementById('uploadStatus').innerHTML = ''; document.getElementById('uploadSubmitBtn').classList.remove('disabled'); document.getElementById('uploadSubmitBtn').disabled = false; document.getElementById('videoFileInput').value = ''; }
+function previewVideo(file) { if (!file) return; selectedVideoFile = file; const reader = new FileReader(); reader.onload = function(e) { const videoPreview = document.getElementById('videoPreview'); videoPreview.src = e.target.result; videoPreview.style.display = 'block'; document.querySelector('.preview-placeholder').style.display = 'none'; }; reader.readAsDataURL(file); }
+function selectVideoFile(input) { const file = input.files[0]; if (file && file.type.startsWith('video/')) { if (file.size > 100 * 1024 * 1024) { alert('حجم الفيديو يجب أن يكون أقل من 100MB'); return; } previewVideo(file); } else { alert('الرجاء اختيار ملف فيديو صحيح'); } }
+function showHashtagSuggestions() { const textarea = document.getElementById('videoDescription'); const suggestionsDiv = document.getElementById('hashtagSuggestions'); const text = textarea.value; const lastWord = text.split(' ').pop(); if (lastWord.startsWith('#')) { const searchTerm = lastWord.substring(1).toLowerCase(); const filtered = popularHashtags.filter(h => h.includes(searchTerm)); if (filtered.length > 0) { suggestionsDiv.innerHTML = filtered.map(h => `<span class="hashtag-suggestion" onclick="insertHashtag('${h}')">#${h}</span>`).join(''); } else { suggestionsDiv.innerHTML = ''; } } else { suggestionsDiv.innerHTML = ''; } }
+function insertHashtag(hashtag) { const textarea = document.getElementById('videoDescription'); const text = textarea.value; const lastWord = text.split(' ').pop(); const newText = text.substring(0, text.length - lastWord.length) + '#' + hashtag + ' '; textarea.value = newText; textarea.focus(); document.getElementById('hashtagSuggestions').innerHTML = ''; }
+function showMusicSuggestions() { const input = document.getElementById('videoMusic'); const suggestionsDiv = document.getElementById('musicSuggestions'); const query = input.value.toLowerCase(); if (query.length > 0) { const filtered = popularMusics.filter(m => m.toLowerCase().includes(query)); if (filtered.length > 0) { suggestionsDiv.innerHTML = filtered.map(m => `<div class="music-suggestion" onclick="selectMusic('${m}')"><i class="fas fa-music"></i><div class="music-name">${m}</div><div class="music-count">شائع</div></div>`).join(''); } else { suggestionsDiv.innerHTML = ''; } } else { suggestionsDiv.innerHTML = ''; } }
+function selectMusic(musicName) { document.getElementById('videoMusic').value = musicName; document.getElementById('musicSuggestions').innerHTML = ''; }
+async function uploadVideoWithDetails() {
+    if (!selectedVideoFile) { alert('الرجاء اختيار فيديو أولاً'); return; }
+    const description = document.getElementById('videoDescription').value;
+    const music = document.getElementById('videoMusic').value || 'Original Sound';
+    const visibility = document.getElementById('videoVisibility').value;
+    const commentsSetting = document.getElementById('videoComments').value;
+    const progressBar = document.getElementById('uploadProgressBar'); const progressFill = document.getElementById('progressFill'); const progressText = document.getElementById('progressText'); const statusDiv = document.getElementById('uploadStatus'); const submitBtn = document.getElementById('uploadSubmitBtn');
+    progressBar.style.display = 'block'; submitBtn.classList.add('disabled'); submitBtn.disabled = true; statusDiv.innerHTML = ''; progressFill.style.width = '0%'; progressText.innerText = '0%';
+    try {
+        const formData = new FormData(); formData.append('file', selectedVideoFile); formData.append('upload_preset', UPLOAD_PRESET); formData.append('resource_type', 'video');
+        const xhr = new XMLHttpRequest(); xhr.open('POST', `https://api.cloudinary.com/v1_1/${CLOUD_NAME}/video/upload`);
+        xhr.upload.onprogress = (e) => { if (e.lengthComputable) { const percent = Math.round((e.loaded / e.total) * 100); progressFill.style.width = `${percent}%`; progressText.innerText = `${percent}%`; } };
+        const response = await new Promise((resolve, reject) => { xhr.onload = () => resolve(xhr); xhr.onerror = () => reject(xhr); xhr.send(formData); });
+        const result = JSON.parse(response.responseText);
+        await db.ref('videos/').push({ url: result.secure_url, thumbnail: result.secure_url.replace('.mp4', '.jpg'), description, music, visibility, commentsSetting, sender: currentUser.uid, senderName: currentUserData?.username, likes: 0, likedBy: {}, comments: {}, timestamp: Date.now() });
+        statusDiv.innerHTML = '<i class="fas fa-check-circle"></i> تم رفع الفيديو بنجاح!'; statusDiv.style.color = '#4caf50';
+        setTimeout(() => { closeUploadPanel(); renderVideos(); }, 1500);
+    } catch (error) { console.error('Upload error:', error); statusDiv.innerHTML = '<i class="fas fa-exclamation-circle"></i> فشل الرفع: ' + error.message; statusDiv.style.color = '#ff4444'; progressBar.style.display = 'none'; submitBtn.classList.remove('disabled'); submitBtn.disabled = false; }
+}
+function loadPopularMusics() { const sounds = Object.keys(allSounds).sort((a, b) => allSounds[b] - allSounds[a]); popularMusics = sounds.slice(0, 10); if (popularMusics.length === 0) popularMusics = ['Original Sound', 'موسيقى هادئة', 'ريمكس ترند', 'أغنية جديدة', 'تيك توك ريمكس']; }
+setInterval(loadPopularMusics, 30000);
+
+function switchTab(tab) {
+    document.querySelectorAll('.nav-item').forEach(t => t.classList.remove('active'));
+    if (event.target.closest('.nav-item')) event.target.closest('.nav-item').classList.add('active');
+    if (tab === 'search') openSearch();
+    if (tab === 'notifications') openNotifications();
+    if (tab === 'home') { closeSearch(); closeNotifications(); closeProfile(); closeSounds(); closeUploadPanel(); closeConversations(); closePrivateChat(); }
 }
 
-window.sendFile = (input) => { const file = input.files[0]; if (!file) return; selectedMediaFile = file; window.sendMessage(); input.value = ''; };
-
-// ========== REPLY, EDIT, DELETE, PIN, FORWARD ==========
-window.replyToMessage = (id, text) => { replyingTo = { id, text }; showReplyPreview(text); };
-window.editMessage = (id, text) => { editingMessage = { id, text }; messageInput.value = text; messageInput.focus(); };
-window.deleteMessage = async (id) => { if (confirm('حذف هذه الرسالة للجميع؟')) await deleteDoc(doc(db, 'chats', activeChatId, 'messages', id)); };
-window.pinMessage = async (id, text) => { await updateDoc(doc(db, 'chats', activeChatId), { pinnedMessage: { id, text, timestamp: new Date() } }); loadPinnedMessage(); showToast('📌 تم تثبيت الرسالة'); };
-window.forwardMessage = async (id, text, mediaJson) => { const userIds = prompt('أدخل اسم المستخدم المستهدف (بدون @):'); if (!userIds) return; const targetUser = allUsers.find(u => u.username === userIds.toLowerCase()); if (!targetUser) { showToast('❌ مستخدم غير موجود', true); return; } const chatId = currentUser.uid < targetUser.id ? `${currentUser.uid}_${targetUser.id}` : `${targetUser.id}_${currentUser.uid}`; await addDoc(collection(db, 'chats', chatId, 'messages'), { senderId: currentUser.uid, text: text, media: mediaJson ? JSON.parse(mediaJson) : null, timestamp: new Date(), forwarded: true }); showToast('✅ تم إعادة التوجيه'); };
-
-// ========== CHAT FEATURES ==========
-window.pinChat = async () => { const isPinned = pinnedChats[activeChatUser.id]; if (isPinned) { delete pinnedChats[activeChatUser.id]; await updateDoc(doc(db, 'users', currentUser.uid), { [`pinnedChats.${activeChatUser.id}`]: null }); showToast('📌 تم إلغاء تثبيت المحادثة'); } else { pinnedChats[activeChatUser.id] = true; await updateDoc(doc(db, 'users', currentUser.uid), { [`pinnedChats.${activeChatUser.id}`]: true }); showToast('📌 تم تثبيت المحادثة'); } renderUsersList(); };
-window.toggleMuteChat = async () => { const isMuted = mutedChats[activeChatUser.id]; if (isMuted) { delete mutedChats[activeChatUser.id]; await updateDoc(doc(db, 'users', currentUser.uid), { [`mutedChats.${activeChatUser.id}`]: null }); showToast('🔔 تم تفعيل الإشعارات'); } else { mutedChats[activeChatUser.id] = true; await updateDoc(doc(db, 'users', currentUser.uid), { [`mutedChats.${activeChatUser.id}`]: true }); showToast('🔕 تم كتم الإشعارات'); } document.getElementById('muteChatBtn').style.color = mutedChats[activeChatUser.id] ? '#00a884' : '#aebac1'; };
-window.blockUser = async () => { if (confirm(`حظر ${activeChatUser?.name}؟`)) { blockedUsers[activeChatUser.id] = true; await updateDoc(doc(db, 'users', currentUser.uid), { [`blockedUsers.${activeChatUser.id}`]: true }); showToast(`✅ تم حظر ${activeChatUser?.name}`); window.selectUser(null); loadUsers(); } };
-async function loadPinnedMessage() { const chatSnap = await getDoc(doc(db, 'chats', activeChatId)); const pinned = chatSnap.data()?.pinnedMessage; const bar = document.getElementById('pinnedMessageBar'); if (pinned) { bar.innerHTML = `📌 رسالة مثبتة: ${escapeHtml(pinned.text)} <button onclick="unpinMessage()" class="text-[#00a884] mr-2">إلغاء</button>`; bar.style.display = 'block'; } else bar.style.display = 'none'; }
-async function unpinMessage() { await updateDoc(doc(db, 'chats', activeChatId), { pinnedMessage: null }); loadPinnedMessage(); showToast('تم إلغاء تثبيت الرسالة'); }
-
-// ========== NOTIFICATIONS ==========
-async function sendNotification(name, text) { if (mutedChats[activeChatUser?.id] || !text) return; if (Notification.permission === 'granted') new Notification(`💚 ${name}`, { body: text, icon: activeChatUser?.avatarUrl || 'https://via.placeholder.com/48' }); }
-window.requestNotificationPermission = () => { Notification.requestPermission(); showToast('🔔 تم تفعيل الإشعارات'); };
-window.openNotifications = () => { showToast('📢 سيتم عرض الإشعارات قريباً'); };
-
-// ========== SEARCH ==========
-window.openSearchModal = () => { document.getElementById('searchModal').classList.add('open'); document.getElementById('searchUsername').value = ''; document.getElementById('searchResult').innerHTML = ''; };
-window.closeSearchModal = () => { document.getElementById('searchModal').classList.remove('open'); };
-window.searchByUsername = async () => {
-    const username = document.getElementById('searchUsername').value.toLowerCase().replace('@', '');
-    const resultDiv = document.getElementById('searchResult');
-    if (username.length < 2) { resultDiv.innerHTML = '<div class="text-center text-red-400">أدخل اسم مستخدم صحيح</div>'; return; }
-    const q = query(collection(db, 'users'), where('username', '==', username));
-    const snapshot = await getDocs(q);
-    if (snapshot.empty) { resultDiv.innerHTML = '<div class="text-center text-red-400">❌ لا يوجد مستخدم</div>'; return; }
-    const user = { id: snapshot.docs[0].id, ...snapshot.docs[0].data() };
-    if (user.id === currentUser.uid) { resultDiv.innerHTML = '<div class="text-center text-yellow-400">هذا حسابك</div>'; return; }
-    resultDiv.innerHTML = `<div class="flex items-center gap-3 p-3 bg-[#2a3942] rounded-xl"><div class="w-12 h-12 rounded-full bg-[#00a884] overflow-hidden flex items-center justify-center">${user.avatarUrl ? `<img src="${user.avatarUrl}">` : '<i class="fas fa-user"></i>'}</div><div class="flex-1"><div class="font-semibold">${escapeHtml(user.name)}</div><div class="text-sm text-gray-400">@${escapeHtml(user.username)}</div></div><button onclick="startChatWithUser('${user.id}', '${escapeHtml(user.name)}')" class="bg-[#00a884] px-4 py-2 rounded-full text-sm">محادثة</button></div>`;
-};
-window.startChatWithUser = async (userId, userName) => { closeSearchModal(); if (!allUsers.find(u => u.id === userId)) { const userSnap = await getDoc(doc(db, 'users', userId)); if (userSnap.exists()) allUsers.push({ id: userId, ...userSnap.data() }); } await selectUser(userId); showToast(`💬 بدأت محادثة مع ${userName}`); };
-
-// ========== EMOJI ==========
-window.toggleEmojiPicker = () => { const picker = document.getElementById('emojiPicker'); picker.style.display = picker.style.display === 'none' ? 'block' : 'none'; if (picker.innerHTML === '') emojis.forEach(emoji => { const btn = document.createElement('button'); btn.textContent = emoji; btn.className = 'text-2xl p-2 hover:bg-[#2a3942] rounded-lg transition'; btn.onclick = () => { messageInput.value += emoji; picker.style.display = 'none'; }; picker.appendChild(btn); }); };
-window.startRecording = async () => { const btn = document.getElementById('recordBtn'); if (mediaRecorder?.state === 'recording') { mediaRecorder.stop(); btn.innerHTML = '<i class="fas fa-microphone"></i>'; return; } try { const stream = await navigator.mediaDevices.getUserMedia({ audio: true }); mediaRecorder = new MediaRecorder(stream); audioChunks = []; mediaRecorder.ondataavailable = (e) => audioChunks.push(e.data); mediaRecorder.onstop = async () => { const audioBlob = new Blob(audioChunks, { type: 'audio/mp3' }); const audioFile = new File([audioBlob], 'recording.mp3', { type: 'audio/mp3' }); selectedMediaFile = audioFile; await window.sendMessage(); stream.getTracks().forEach(t => t.stop()); }; mediaRecorder.start(); btn.innerHTML = '<i class="fas fa-stop-circle text-red-500"></i>'; } catch (err) { showToast('❌ لا يمكن الوصول للميكروفون', true); } };
-
-// ========== CALLS ==========
-window.startCall = async (type) => { if (!activeChatId) { showToast('❌ اختر مستخدم أولاً', true); return; } document.getElementById('callModal').classList.add('open'); const channelName = `call_${activeChatId}`; try { agoraClient = AgoraRTC.createClient({ mode: "rtc", codec: "vp8" }); localTracks = await AgoraRTC.createMicrophoneAndCameraTracks(); localTracks[0].play("localVideo"); if (type === 'video') localTracks[1].play("localVideo"); await agoraClient.join(AGORA_APP_ID, channelName, null, currentUser.uid); await agoraClient.publish(localTracks); agoraClient.on("user-published", async (user, mediaType) => { await agoraClient.subscribe(user, mediaType); if (mediaType === "video") user.videoTrack.play("remoteVideo"); if (mediaType === "audio") user.audioTrack.play(); }); } catch (error) { showToast('❌ فشل الاتصال', true); endCall(); } };
-window.endCall = () => { if (localTracks) localTracks.forEach(t => t.close()); if (agoraClient) agoraClient.leave(); document.getElementById('callModal').classList.remove('open'); localTracks = null; };
-window.toggleMute = () => { if (localTracks?.[0]) localTracks[0].setEnabled(!localTracks[0].enabled); };
-window.toggleVideoTrack = () => { if (localTracks?.[1]) localTracks[1].setEnabled(!localTracks[1].enabled); };
-
-// ========== PROFILE & SETTINGS ==========
-window.openProfile = async () => { const userSnap = await getDoc(doc(db, 'users', currentUser.uid)); const userData = userSnap.data(); document.getElementById('profileNameInput').value = userData.name || ''; document.getElementById('profileUsernameInput').value = userData.username || ''; document.getElementById('profileBioInput').value = userData.bio || ''; const profileAvatar = document.getElementById('profileAvatar'); profileAvatar.innerHTML = userData.avatarUrl ? `<img src="${userData.avatarUrl}" class="w-full h-full object-cover">` : '<i class="fas fa-user fa-3x text-white"></i>'; document.getElementById('profileModal').classList.add('open'); };
-window.closeProfileModal = () => { document.getElementById('profileModal').classList.remove('open'); };
-window.saveProfile = async () => { const name = document.getElementById('profileNameInput').value; let username = document.getElementById('profileUsernameInput').value.toLowerCase().replace(/[^a-z0-9_]/g, ''); const bio = document.getElementById('profileBioInput').value; if (!name) { showToast('❌ الاسم مطلوب', true); return; } if (!username) username = name.toLowerCase().replace(/\s/g, ''); await updateDoc(doc(db, 'users', currentUser.uid), { name, username, bio }); showToast('✅ تم تحديث الملف الشخصي'); closeProfileModal(); location.reload(); };
-window.changeProfilePhoto = () => { const input = document.createElement('input'); input.type = 'file'; input.accept = 'image/*'; input.onchange = async (e) => { const file = e.target.files[0]; if (!file) return; showToast('📤 جاري الرفع...'); const result = await uploadMedia(file); await updateDoc(doc(db, 'users', currentUser.uid), { avatarUrl: result.url }); showToast('✅ تم تحديث الصورة'); location.reload(); }; input.click(); };
-window.openSettings = () => { document.getElementById('settingsModal').classList.add('open'); };
-window.closeSettingsModal = () => { document.getElementById('settingsModal').classList.remove('open'); };
-window.clearAllChats = async () => { if (confirm('⚠️ حذف جميع المحادثات؟')) { const chatsRef = collection(db, 'chats'); const q = query(chatsRef, where('participants', 'array-contains', currentUser.uid)); const snapshot = await getDocs(q); for (const docSnap of snapshot.docs) await deleteDoc(docSnap.ref); showToast('✅ تم حذف جميع المحادثات'); } };
-window.toggleTheme = () => { document.body.classList.toggle('dark'); };
-
-// ========== UTILITIES ==========
-function escapeHtml(text) { if (!text) return ''; const div = document.createElement('div'); div.textContent = text; return div.innerHTML; }
-function showReplyPreview(text) { const preview = document.getElementById('replyPreview'); preview.innerHTML = `↩️ رد على: ${text.substring(0, 50)} <button onclick="hideReplyPreview()" class="text-red-400 mr-2">✖</button>`; preview.style.display = 'block'; }
-function hideReplyPreview() { replyingTo = null; document.getElementById('replyPreview').style.display = 'none'; }
-function showToast(message, isError = false) { const toast = document.getElementById('toast'); toast.textContent = message; toast.style.background = isError ? '#dc2626' : '#2a3942'; toast.style.opacity = '1'; setTimeout(() => toast.style.opacity = '0', 3000); }
-window.openImageModal = (url) => { const modal = document.createElement('div'); modal.className = 'fixed inset-0 bg-black/95 z-[2000] flex items-center justify-center cursor-pointer'; modal.onclick = () => modal.remove(); modal.innerHTML = `<img src="${url}" class="max-w-[95%] max-h-[95%] object-contain rounded-xl">`; document.body.appendChild(modal); };
-
-// ========== AUTH STATE ==========
-onAuthStateChanged(auth, async (user) => {
+// ========== مراقبة المستخدم ==========
+auth.onAuthStateChanged(async (user) => {
     if (user) {
-        currentUser = user; await loadUserData(); await loadUsers();
-        document.getElementById('authScreen').style.display = 'none';
+        currentUser = user; await loadUserData(); checkAdminStatus();
+        document.getElementById('loginScreen').style.display = 'none';
         document.getElementById('mainApp').style.display = 'block';
-        document.getElementById('sidebarAvatar').innerHTML = currentUserData?.avatarUrl ? `<img src="${currentUserData.avatarUrl}" class="w-full h-full object-cover">` : '<i class="fas fa-user"></i>';
-        showToast(`👋 مرحباً ${currentUserData?.name || currentUser.email}`);
-        setInterval(async () => { if (currentUser) await updateDoc(doc(db, 'users', currentUser.uid), { status: 'online', lastSeen: new Date() }); }, 30000);
-        if (Notification.permission === 'default') Notification.requestPermission();
+        const presenceRef = db.ref('presence/' + user.uid); presenceRef.set(true); presenceRef.onDisconnect().remove();
     } else {
-        document.getElementById('authScreen').style.display = 'flex';
+        document.getElementById('loginScreen').style.display = 'flex';
         document.getElementById('mainApp').style.display = 'none';
     }
 });
-
-window.addEventListener('beforeunload', async () => { if (currentUser) await updateDoc(doc(db, 'users', currentUser.uid), { status: 'offline', lastSeen: new Date() }); });
-
-console.log('✅ VibeChat Ready - All Features Added!');
+console.log('✅ SHΔDØW Ultimate System Ready');

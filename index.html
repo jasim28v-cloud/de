@@ -3,231 +3,387 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>VibeChat | محادثات فورية متطورة</title>
+    <title>SHΔDØW | TikTok Ultra Pro</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <script src="https://download.agora.io/sdk/release/AgoraRTC_N.js"></script>
     <script src="https://upload-widget.cloudinary.com/global/all.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-database-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-storage-compat.js"></script>
+    <!-- مكتبة Agora للبث المباشر -->
+    <script src="https://download.agora.io/sdk/release/AgoraRTC_N-4.23.0.js"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
     <style>
+        /* كل الستايلات الموجودة عندك تبقى كما هي */
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: 'Inter', sans-serif; background: #0b141a; color: #e9edef; min-height: 100vh; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #000; color: #fff; overflow: hidden; height: 100vh; }
         
-        /* Auth Screen */
-        .auth-screen { position: fixed; inset: 0; z-index: 1000; background: #0b141a; display: flex; align-items: center; justify-content: center; padding: 20px; }
-        .auth-card { background: #202c33; border-radius: 32px; padding: 40px 32px; width: 100%; max-width: 420px; text-align: center; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.5); }
-        .auth-card h1 { font-size: 38px; font-weight: 800; margin-bottom: 8px; color: #00a884; }
-        .auth-card input { width: 100%; padding: 14px 18px; margin: 10px 0; border-radius: 28px; background: #2a3942; border: none; color: #e9edef; font-size: 15px; }
-        .auth-card input:focus { outline: none; background: #3b4a54; }
-        .auth-card button { width: 100%; padding: 14px; margin-top: 16px; background: #00a884; border: none; border-radius: 28px; color: white; font-weight: 600; cursor: pointer; transition: 0.2s; }
-        .auth-card button:hover { background: #008f6f; }
-        .auth-card .switch-btn { background: transparent; color: #00a884; border: 1px solid #00a884; margin-top: 12px; }
+        /* شاشة تسجيل الدخول */
+        .login-screen { position: fixed; inset: 0; z-index: 1000; background: radial-gradient(circle at 30% 10%, #0a0a0a, #000); display: flex; align-items: center; justify-content: center; }
+        .login-card { background: rgba(0,0,0,0.85); backdrop-filter: blur(20px); border-radius: 32px; padding: 40px 28px; width: 90%; max-width: 380px; text-align: center; border: 1px solid rgba(254,44,85,0.3); box-shadow: 0 0 40px rgba(254,44,85,0.2); animation: fadeInUp 0.5s ease; }
+        @keyframes fadeInUp { from { opacity: 0; transform: translateY(30px); } to { opacity: 1; transform: translateY(0); } }
+        .login-card h1 { font-size: 38px; font-weight: 900; background: linear-gradient(135deg, #fe2c55, #ff6b6b); -webkit-background-clip: text; -webkit-text-fill-color: transparent; margin-bottom: 30px; }
+        .login-card input { width: 100%; padding: 14px 18px; margin: 10px 0; border-radius: 30px; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.1); color: white; font-size: 15px; }
+        .login-card input:focus { outline: none; border-color: #fe2c55; background: rgba(254,44,85,0.1); }
+        .login-card button { width: 100%; padding: 14px; margin-top: 20px; background: linear-gradient(135deg, #fe2c55, #ff6b6b); border: none; border-radius: 30px; color: white; font-weight: bold; cursor: pointer; }
+        .auth-tabs { display: flex; gap: 10px; margin-bottom: 30px; background: rgba(255,255,255,0.05); border-radius: 60px; padding: 4px; }
+        .auth-tab { flex: 1; padding: 12px; background: none; border: none; color: #888; cursor: pointer; border-radius: 60px; transition: all 0.3s; }
+        .auth-tab.active { background: #fe2c55; color: white; box-shadow: 0 0 15px rgba(254,44,85,0.5); }
         .auth-form { display: none; }
-        .auth-form.active { display: block; }
-        .error-msg { color: #ff6b6b; font-size: 12px; margin-top: 8px; }
-        .auth-footer { margin-top: 24px; color: #8696a0; font-size: 13px; }
-        .auth-footer a { color: #00a884; cursor: pointer; }
-
-        /* Main App */
-        #mainApp { display: none; height: 100vh; background: #0b141a; }
-        .app-container { display: flex; height: 100%; }
-
-        /* Sidebar */
-        .sidebar { width: 80px; background: #111b21; border-left: 1px solid #2a3942; display: flex; flex-direction: column; align-items: center; padding: 20px 0; gap: 24px; }
-        .sidebar-avatar { width: 48px; height: 48px; border-radius: 50%; background: #00a884; display: flex; align-items: center; justify-content: center; cursor: pointer; overflow: hidden; }
-        .sidebar-avatar img { width: 100%; height: 100%; object-fit: cover; }
-        .sidebar-icon { color: #8696a0; font-size: 22px; cursor: pointer; transition: 0.2s; }
-        .sidebar-icon:hover { color: #00a884; }
-
-        /* Users List */
-        .users-list { width: 320px; background: #202c33; border-left: 1px solid #2a3942; display: flex; flex-direction: column; height: 100%; }
-        .users-header { padding: 20px; border-bottom: 1px solid #2a3942; }
-        .users-header h2 { font-size: 20px; font-weight: 700; margin-bottom: 16px; }
-        .search-box { display: flex; gap: 10px; }
-        .search-box input { flex: 1; padding: 12px 16px; background: #2a3942; border: none; border-radius: 28px; color: #e9edef; font-size: 14px; }
-        .search-box button { background: #00a884; border: none; border-radius: 28px; padding: 0 20px; color: white; cursor: pointer; }
-        .users-container { flex: 1; overflow-y: auto; padding: 12px; }
-        .user-item { display: flex; align-items: center; gap: 12px; padding: 12px; border-radius: 20px; cursor: pointer; transition: 0.2s; margin-bottom: 4px; }
-        .user-item:hover { background: #2a3942; }
-        .user-item.active { background: #2a3942; }
-        .user-avatar { width: 48px; height: 48px; border-radius: 50%; background: #00a884; display: flex; align-items: center; justify-content: center; overflow: hidden; }
-        .user-avatar img { width: 100%; height: 100%; object-fit: cover; }
-        .user-info { flex: 1; }
-        .user-name { font-weight: 600; font-size: 15px; margin-bottom: 4px; }
-        .user-username { font-size: 12px; color: #8696a0; }
-        .user-status { font-size: 10px; color: #00a884; }
-
-        /* Chat Area */
-        .chat-area { flex: 1; display: flex; flex-direction: column; background: #0b141a; }
-        .chat-header { padding: 16px 24px; background: #202c33; border-bottom: 1px solid #2a3942; display: flex; align-items: center; justify-content: space-between; }
-        .chat-header-info { display: flex; align-items: center; gap: 12px; }
-        .chat-header-avatar { width: 44px; height: 44px; border-radius: 50%; background: #00a884; overflow: hidden; }
-        .chat-header-avatar img { width: 100%; height: 100%; object-fit: cover; }
-        .chat-header-name h3 { font-size: 16px; font-weight: 600; margin-bottom: 2px; }
-        .chat-header-status { font-size: 11px; color: #8696a0; }
-        .chat-actions { display: flex; gap: 16px; }
-        .chat-action { background: none; border: none; color: #aebac1; font-size: 20px; cursor: pointer; padding: 8px; border-radius: 50%; transition: 0.2s; }
-        .chat-action:hover { background: #2a3942; color: #00a884; }
-
-        /* Messages */
-        .messages-area { flex: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 12px; }
-        .message { display: flex; max-width: 70%; animation: fadeIn 0.2s ease; position: relative; }
-        @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
-        .message.sent { align-self: flex-end; flex-direction: row-reverse; }
-        .message.received { align-self: flex-start; }
-        .message-bubble { padding: 10px 14px; border-radius: 18px; font-size: 14px; line-height: 1.4; }
-        .message.sent .message-bubble { background: #005c4b; color: white; border-bottom-right-radius: 4px; }
-        .message.received .message-bubble { background: #202c33; color: #e9edef; border-bottom-left-radius: 4px; }
-        .message-actions { position: absolute; top: -30px; right: 0; display: none; gap: 8px; background: #2a3942; padding: 6px 12px; border-radius: 20px; z-index: 10; }
-        .message:hover .message-actions { display: flex; }
-        .message-action { background: none; border: none; color: #aebac1; cursor: pointer; font-size: 12px; padding: 4px 8px; border-radius: 12px; }
-        .message-action:hover { background: #3b4a54; color: #00a884; }
-        .reply-preview { background: rgba(0,168,132,0.2); padding: 8px 12px; border-radius: 12px; margin-bottom: 6px; font-size: 12px; border-right: 3px solid #00a884; }
-        .message-media { margin-top: 6px; border-radius: 12px; overflow: hidden; max-width: 250px; cursor: pointer; }
-        .message-media img { width: 100%; border-radius: 12px; }
-        .message-audio audio { height: 36px; border-radius: 20px; }
-        .message-time { font-size: 10px; color: #8696a0; margin-top: 4px; text-align: right; }
-        .pinned-message { background: rgba(0,168,132,0.1); padding: 8px 12px; border-radius: 12px; margin-bottom: 12px; font-size: 12px; border-right: 3px solid #00a884; cursor: pointer; }
-
-        /* Input Area */
-        .input-area { padding: 16px; background: #202c33; display: flex; gap: 12px; align-items: center; }
-        .input-area input { flex: 1; padding: 12px 18px; background: #2a3942; border: none; border-radius: 28px; color: #e9edef; font-size: 14px; }
-        .input-area input:focus { outline: none; }
-        .input-area button { background: none; border: none; color: #aebac1; font-size: 22px; cursor: pointer; padding: 8px; border-radius: 50%; transition: 0.2s; }
-        .input-area button:hover { color: #00a884; background: #2a3942; }
-        .emoji-picker { position: absolute; bottom: 80px; right: 20px; background: #202c33; border-radius: 20px; padding: 12px; display: none; z-index: 100; width: 320px; max-height: 300px; overflow-y: auto; }
-
-        /* Modals */
-        .modal { position: fixed; inset: 0; background: rgba(0,0,0,0.7); z-index: 1000; display: flex; align-items: center; justify-content: center; opacity: 0; visibility: hidden; transition: 0.2s; }
-        .modal.open { opacity: 1; visibility: visible; }
-        .modal-content { background: #202c33; border-radius: 28px; padding: 28px; width: 90%; max-width: 460px; }
-        .modal-title { font-size: 20px; font-weight: 700; text-align: center; margin-bottom: 20px; }
-        .modal-input { width: 100%; padding: 12px 16px; background: #2a3942; border: none; border-radius: 28px; color: #e9edef; margin-bottom: 16px; }
-        .modal-buttons { display: flex; gap: 12px; margin-top: 20px; }
-        .modal-buttons button { flex: 1; padding: 12px; border-radius: 28px; font-weight: 600; cursor: pointer; border: none; }
-        .modal-btn-primary { background: #00a884; color: white; }
-        .modal-btn-secondary { background: #2a3942; color: white; }
-
-        /* Call Modal */
-        .call-modal { position: fixed; inset: 0; background: #000; z-index: 1100; display: flex; flex-direction: column; align-items: center; justify-content: center; opacity: 0; visibility: hidden; transition: 0.2s; }
-        .call-modal.open { opacity: 1; visibility: visible; }
-        .remote-video { width: 100%; height: 80%; background: #000; }
-        .local-video { position: absolute; bottom: 20px; right: 20px; width: 120px; height: 160px; background: #000; border-radius: 12px; overflow: hidden; }
-        .call-controls { position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%); display: flex; gap: 20px; }
-        .call-btn { width: 56px; height: 56px; border-radius: 50%; border: none; font-size: 24px; cursor: pointer; background: #2a3942; color: white; }
-        .call-end { background: #dc2626; }
-
-        .loading { text-align: center; padding: 40px; color: #8696a0; }
-        .spinner { width: 32px; height: 32px; border: 2px solid rgba(0,168,132,0.2); border-top-color: #00a884; border-radius: 50%; animation: spin 0.8s linear infinite; margin: 0 auto 12px; }
+        .auth-form.active { display: block; animation: fadeIn 0.3s ease; }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        
+        /* التطبيق الرئيسي */
+        #mainApp { display: none; height: 100vh; background: #000; position: relative; }
+        
+        /* شريط علوي */
+        .top-bar { position: fixed; top: 0; left: 0; right: 0; display: flex; justify-content: space-between; align-items: center; padding: 12px 20px; z-index: 100; background: linear-gradient(to bottom, rgba(0,0,0,0.8), transparent); }
+        .logo { display: flex; align-items: center; gap: 8px; }
+        .logo-icon { width: 34px; height: 34px; background: linear-gradient(135deg, #fe2c55, #ff6b6b); border-radius: 12px; display: flex; align-items: center; justify-content: center; font-weight: bold; }
+        .logo-text { font-weight: 800; font-size: 18px; }
+        .top-tabs { display: flex; gap: 20px; background: rgba(0,0,0,0.5); padding: 5px 15px; border-radius: 30px; }
+        .top-tab { background: none; border: none; color: rgba(255,255,255,0.6); font-weight: 500; padding: 6px 12px; cursor: pointer; border-radius: 20px; font-size: 14px; }
+        .top-tab.active { color: #fe2c55; background: rgba(254,44,85,0.2); }
+        .top-icons { display: flex; gap: 18px; }
+        .top-icon { background: none; border: none; color: white; font-size: 20px; cursor: pointer; }
+        
+        /* حاوية الفيديوهات */
+        .videos-container { height: 100vh; overflow-y: scroll; scroll-snap-type: y mandatory; scrollbar-width: none; }
+        .videos-container::-webkit-scrollbar { display: none; }
+        .video-item { height: 100vh; scroll-snap-align: start; position: relative; background: #000; margin-bottom: 2px; }
+        .video-item video { width: 100%; height: 100%; object-fit: cover; cursor: pointer; }
+        
+        /* معلومات الفيديو */
+        .video-info { position: absolute; bottom: 100px; left: 16px; right: 80px; z-index: 20; }
+        .author-info { display: flex; align-items: center; gap: 12px; margin-bottom: 8px; }
+        .author-avatar { width: 48px; height: 48px; border-radius: 50%; background: linear-gradient(135deg, #fe2c55, #ff6b6b); display: flex; align-items: center; justify-content: center; font-size: 20px; cursor: pointer; border: 2px solid white; overflow: hidden; }
+        .author-avatar img { width: 100%; height: 100%; object-fit: cover; }
+        .author-name { font-weight: bold; font-size: 16px; cursor: pointer; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+        .follow-btn { background: #fe2c55; padding: 4px 12px; border-radius: 20px; font-size: 11px; font-weight: bold; cursor: pointer; border: none; color: white; }
+        .video-caption { font-size: 14px; margin-bottom: 8px; line-height: 1.4; }
+        .video-music { font-size: 12px; opacity: 0.8; display: flex; align-items: center; gap: 6px; cursor: pointer; }
+        .hashtag { color: #fe2c55; cursor: pointer; }
+        
+        /* الأزرار الجانبية */
+        .side-actions { position: absolute; right: 12px; bottom: 120px; display: flex; flex-direction: column; gap: 24px; z-index: 20; }
+        .side-btn { display: flex; flex-direction: column; align-items: center; gap: 4px; background: none; border: none; color: white; cursor: pointer; font-size: 11px; }
+        .side-btn i { font-size: 32px; }
+        .side-btn.active i { color: #fe2c55; }
+        .side-btn .count { font-weight: bold; }
+        
+        /* شريط سفلي */
+        .bottom-nav { position: fixed; bottom: 0; left: 0; right: 0; display: flex; justify-content: space-around; align-items: center; padding: 12px 0 24px; background: rgba(0,0,0,0.95); backdrop-filter: blur(20px); z-index: 100; border-top: 1px solid rgba(255,255,255,0.1); }
+        .nav-item { display: flex; flex-direction: column; align-items: center; gap: 4px; background: none; border: none; color: rgba(255,255,255,0.6); cursor: pointer; font-size: 10px; }
+        .nav-item i { font-size: 24px; }
+        .nav-item.active { color: #fe2c55; transform: translateY(-2px); }
+        .create-btn { width: 52px; height: 52px; background: linear-gradient(135deg, #fe2c55, #ff6b6b); border-radius: 50%; display: flex; align-items: center; justify-content: center; margin-top: -28px; cursor: pointer; box-shadow: 0 0 20px rgba(254,44,85,0.5); }
+        
+        /* اللوحات المنبثقة العامة */
+        .share-panel, .comments-panel, .search-panel, .notifications-panel, .profile-panel, .edit-profile-panel, .sounds-panel, .upload-panel, .private-chat-panel, .conversations-panel, .live-streams-panel {
+            position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: #000; z-index: 300; transform: translateX(100%); transition: 0.3s cubic-bezier(0.2, 0.9, 0.4, 1.1); overflow-y: auto;
+        }
+        .share-panel.open, .comments-panel.open, .search-panel.open, .notifications-panel.open, .profile-panel.open, .edit-profile-panel.open, .sounds-panel.open, .upload-panel.open, .private-chat-panel.open, .conversations-panel.open, .live-streams-panel.open {
+            transform: translateX(0);
+        }
+        .panel-header { display: flex; justify-content: space-between; align-items: center; padding: 20px; border-bottom: 1px solid rgba(255,255,255,0.1); position: sticky; top: 0; background: #000; z-index: 10; }
+        .close-btn { background: none; border: none; color: white; font-size: 24px; cursor: pointer; width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center; }
+        
+        /* باقي الستايلات كما هي */
+        .upload-content { max-width: 500px; margin: 0 auto; padding: 20px; }
+        .video-preview-area { background: #1a1a1a; border-radius: 20px; overflow: hidden; margin-bottom: 24px; cursor: pointer; transition: all 0.3s; border: 2px dashed rgba(254,44,85,0.3); }
+        .video-preview-area:hover { border-color: #fe2c55; background: rgba(254,44,85,0.05); }
+        .preview-placeholder { text-align: center; padding: 60px 20px; }
+        .preview-placeholder i { font-size: 64px; color: #fe2c55; margin-bottom: 16px; }
+        .preview-placeholder p { font-size: 16px; margin-bottom: 8px; }
+        .preview-hint { font-size: 12px; color: rgba(255,255,255,0.5); }
+        .video-preview { width: 100%; max-height: 300px; object-fit: contain; background: #000; display: none; }
+        .upload-form { background: #111; border-radius: 20px; padding: 20px; }
+        .form-group { margin-bottom: 20px; }
+        .form-group label { display: block; margin-bottom: 8px; font-size: 14px; font-weight: 500; color: rgba(255,255,255,0.8); }
+        .form-group label i { margin-right: 8px; color: #fe2c55; }
+        .form-group textarea, .form-group input, .form-group select { width: 100%; padding: 14px 16px; background: #1a1a1a; border: 1px solid rgba(255,255,255,0.1); border-radius: 16px; color: white; font-size: 14px; transition: all 0.3s; }
+        .form-group textarea:focus, .form-group input:focus, .form-group select:focus { outline: none; border-color: #fe2c55; background: rgba(254,44,85,0.05); }
+        .form-group textarea { resize: none; min-height: 80px; }
+        .form-row { display: flex; gap: 15px; }
+        .form-group.half { flex: 1; }
+        .hashtag-suggestions, .music-suggestions { margin-top: 8px; display: flex; flex-wrap: wrap; gap: 8px; }
+        .hashtag-suggestion, .music-suggestion { background: rgba(254,44,85,0.2); padding: 4px 12px; border-radius: 20px; font-size: 12px; color: #fe2c55; cursor: pointer; transition: all 0.2s; }
+        .music-suggestion { display: flex; align-items: center; gap: 8px; width: 100%; }
+        .upload-progress { margin: 20px 0; }
+        .progress-bar { background: rgba(255,255,255,0.1); border-radius: 30px; height: 8px; overflow: hidden; }
+        .progress-fill { background: linear-gradient(90deg, #fe2c55, #ff6b6b); width: 0%; height: 100%; transition: width 0.3s; border-radius: 30px; }
+        .progress-text { text-align: center; margin-top: 8px; font-size: 12px; color: #fe2c55; }
+        .upload-actions { display: flex; gap: 15px; margin-top: 20px; }
+        .cancel-upload-btn, .upload-submit-btn { padding: 14px; border-radius: 30px; font-weight: bold; cursor: pointer; transition: all 0.2s; border: none; }
+        .cancel-upload-btn { flex: 1; background: rgba(255,255,255,0.1); color: white; }
+        .upload-submit-btn { flex: 2; background: linear-gradient(135deg, #fe2c55, #ff6b6b); color: white; }
+        .upload-submit-btn.disabled { opacity: 0.5; pointer-events: none; }
+        .upload-status { margin-top: 16px; text-align: center; font-size: 13px; }
+        
+        /* الدردشة الخاصة */
+        .private-chat-panel, .conversations-panel { display: flex; flex-direction: column; background: #000; }
+        .private-messages-list { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+        .private-message { display: flex; gap: 10px; max-width: 85%; }
+        .private-message.sent { align-self: flex-end; flex-direction: row-reverse; }
+        .private-message.received { align-self: flex-start; }
+        .message-bubble { background: #1a1a1a; padding: 10px 14px; border-radius: 20px; word-break: break-word; }
+        .message-bubble.sent { background: #fe2c55; color: white; }
+        .message-bubble.received { background: #2a2a2a; }
+        .message-image { max-width: 200px; max-height: 200px; border-radius: 16px; cursor: pointer; }
+        .message-time { font-size: 10px; opacity: 0.5; margin-top: 4px; text-align: right; }
+        .private-chat-input { display: flex; gap: 12px; padding: 16px; background: #111; border-top: 1px solid rgba(255,255,255,0.1); align-items: center; }
+        .chat-attachment { width: 40px; height: 40px; background: #1a1a1a; border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer; }
+        .private-chat-input input { flex: 1; background: #1a1a1a; border: none; border-radius: 30px; padding: 12px 16px; color: white; }
+        .send-btn { background: #fe2c55; width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center; border: none; color: white; cursor: pointer; }
+        .conversations-list { padding: 16px; }
+        .conversation-item { display: flex; align-items: center; gap: 12px; padding: 12px; border-bottom: 1px solid rgba(255,255,255,0.1); cursor: pointer; transition: background 0.2s; }
+        .conversation-item:hover { background: rgba(255,255,255,0.05); }
+        .conversation-avatar { width: 48px; height: 48px; border-radius: 50%; background: linear-gradient(135deg, #fe2c55, #ff6b6b); display: flex; align-items: center; justify-content: center; font-size: 20px; overflow: hidden; }
+        .conversation-info { flex: 1; }
+        .conversation-name { font-weight: bold; }
+        .conversation-last-msg { font-size: 12px; opacity: 0.6; }
+        
+        /* باقي العناصر */
+        .comment-item { display: flex; gap: 12px; padding: 12px 0; border-bottom: 1px solid rgba(255,255,255,0.1); }
+        .comment-avatar { width: 40px; height: 40px; border-radius: 50%; background: #fe2c55; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+        .add-comment { display: flex; gap: 12px; padding: 12px; background: #1a1a1a; border-radius: 30px; margin-top: 16px; position: sticky; bottom: 0; }
+        .add-comment input { flex: 1; background: none; border: none; color: white; outline: none; }
+        .search-input { width: 100%; padding: 14px 18px; border-radius: 30px; background: #1a1a1a; border: none; color: white; margin-bottom: 20px; }
+        .search-result { display: flex; align-items: center; gap: 14px; padding: 14px; border-bottom: 1px solid rgba(255,255,255,0.08); cursor: pointer; }
+        .search-avatar { width: 48px; height: 48px; border-radius: 50%; background: #fe2c55; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+        .sound-item { display: flex; align-items: center; gap: 15px; padding: 15px; border-bottom: 1px solid rgba(255,255,255,0.1); cursor: pointer; }
+        .sound-icon { width: 52px; height: 52px; background: linear-gradient(135deg, #fe2c55, #ff6b6b); border-radius: 14px; display: flex; align-items: center; justify-content: center; font-size: 24px; }
+        .share-option { display: flex; align-items: center; gap: 15px; padding: 15px; border-bottom: 1px solid rgba(255,255,255,0.08); cursor: pointer; }
+        .copy-toast { position: fixed; bottom: 100px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,0.9); padding: 12px 24px; border-radius: 50px; z-index: 1000; opacity: 0; transition: opacity 0.3s; pointer-events: none; }
+        .copy-toast.show { opacity: 1; }
+        .heart-animation { position: fixed; font-size: 80px; color: #fe2c55; pointer-events: none; z-index: 1000; animation: heartFloat 0.8s ease-out forwards; }
+        @keyframes heartFloat { 0% { transform: scale(0.5) translateY(0); opacity: 1; } 100% { transform: scale(1.5) translateY(-100px); opacity: 0; } }
+        .loading { display: flex; align-items: center; justify-content: center; height: 100vh; color: #888; gap: 12px; flex-direction: column; }
+        .spinner { width: 36px; height: 36px; border: 3px solid rgba(254,44,85,0.3); border-top-color: #fe2c55; border-radius: 50%; animation: spin 0.8s linear infinite; }
         @keyframes spin { to { transform: rotate(360deg); } }
-        .toast { position: fixed; bottom: 100px; left: 50%; transform: translateX(-50%); background: #2a3942; color: white; padding: 10px 20px; border-radius: 28px; font-size: 13px; z-index: 1200; opacity: 0; transition: 0.2s; pointer-events: none; white-space: nowrap; }
-
-        @media (max-width: 768px) { .users-list { width: 280px; } .message { max-width: 85%; } }
+        .edit-input { width: 100%; padding: 14px 16px; margin: 10px 0; border-radius: 16px; background: #1a1a1a; border: 1px solid rgba(255,255,255,0.1); color: white; }
+        .save-btn { width: 100%; padding: 14px; background: linear-gradient(135deg, #fe2c55, #ff6b6b); border: none; border-radius: 30px; color: white; font-weight: bold; cursor: pointer; margin-top: 20px; }
+        .notification-item { display: flex; align-items: center; gap: 14px; padding: 14px; border-bottom: 1px solid rgba(255,255,255,0.08); }
+        .admin-panel-section { margin-top: 20px; padding: 16px; background: rgba(254,44,85,0.1); border-radius: 20px; border: 1px solid rgba(254,44,85,0.3); }
+        .admin-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 20px; }
+        .admin-stat-card { background: rgba(0,0,0,0.5); border-radius: 12px; padding: 12px; text-align: center; }
+        .admin-stat-number { font-size: 24px; font-weight: bold; color: #fe2c55; }
+        .admin-stat-label { font-size: 11px; opacity: 0.7; margin-top: 4px; }
+        .admin-list { max-height: 300px; overflow-y: auto; }
+        .admin-item { display: flex; justify-content: space-between; align-items: center; background: rgba(0,0,0,0.5); padding: 10px; border-radius: 12px; margin-bottom: 8px; }
+        .admin-item-info { display: flex; align-items: center; gap: 10px; flex: 1; overflow: hidden; }
+        .admin-item-avatar { width: 36px; height: 36px; border-radius: 50%; background: #fe2c55; display: flex; align-items: center; justify-content: center; overflow: hidden; flex-shrink: 0; }
+        .admin-item-text { overflow: hidden; }
+        .admin-item-name { font-weight: bold; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .admin-item-email { font-size: 10px; opacity: 0.6; }
+        .admin-delete-btn, .admin-ban-btn { background: rgba(255,0,0,0.3); border: none; color: #ff4444; padding: 6px 12px; border-radius: 20px; font-size: 11px; cursor: pointer; margin-left: 5px; }
+        .admin-ban-btn { background: rgba(255,165,0,0.3); color: #ffaa44; }
+        .profile-header { text-align: center; padding: 60px 20px 40px; background: linear-gradient(135deg, #fe2c55, #ff6b6b); }
+        .profile-avatar-large { width: 100px; height: 100px; border-radius: 50%; background: white; display: flex; align-items: center; justify-content: center; font-size: 48px; margin: 0 auto; border: 3px solid white; overflow: hidden; cursor: pointer; }
+        .profile-avatar-large img { width: 100%; height: 100%; object-fit: cover; }
+        .profile-stats { display: flex; justify-content: center; gap: 40px; margin: 24px 0; }
+        .stat { text-align: center; }
+        .stat-number { font-size: 22px; font-weight: bold; }
+        .stat-label { font-size: 12px; opacity: 0.7; margin-top: 4px; }
+        .edit-profile-btn, .logout-btn, .follow-btn { background: rgba(255,255,255,0.15); border: 1px solid rgba(255,255,255,0.3); padding: 10px 28px; border-radius: 40px; color: white; margin: 0 8px; cursor: pointer; font-size: 14px; }
+        .follow-btn { background: #fe2c55; border: none; }
+        .videos-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 2px; margin-top: 16px; }
+        .video-thumb { aspect-ratio: 9/16; background: #1a1a1a; display: flex; align-items: center; justify-content: center; cursor: pointer; border-radius: 4px; }
+        .back-btn { position: absolute; top: 20px; right: 20px; background: rgba(0,0,0,0.6); width: 44px; height: 44px; border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer; z-index: 20; }
+        
+        /* ستايلات البث المباشر */
+        .live-stream-card { background: #1a1a1a; border-radius: 20px; margin-bottom: 16px; overflow: hidden; border: 1px solid rgba(254,44,85,0.3); }
+        .live-badge { position: absolute; top: 10px; left: 10px; background: #ff4444; padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: bold; z-index: 5; }
+        .live-viewer-count { position: absolute; bottom: 10px; right: 10px; background: rgba(0,0,0,0.6); padding: 4px 8px; border-radius: 20px; font-size: 11px; z-index: 5; }
+        
+        /* نافذة مشاهدة البث */
+        #liveViewerOverlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: #000; z-index: 2000; display: none; flex-direction: column; }
+        #liveRemoteVideo { flex: 1; width: 100%; height: 100%; object-fit: cover; }
+        .live-chat-container { position: absolute; bottom: 80px; left: 16px; right: 80px; z-index: 10; }
+        .live-chat-messages { max-height: 200px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; margin-bottom: 10px; }
+        .live-chat-message { background: rgba(0,0,0,0.6); padding: 8px 12px; border-radius: 20px; font-size: 13px; }
+        .live-chat-input { display: flex; gap: 10px; }
+        .live-chat-input input { flex: 1; background: #1a1a1a; border: none; border-radius: 30px; padding: 12px 16px; color: white; }
+        .live-chat-input button { background: #fe2c55; width: 44px; height: 44px; border-radius: 50%; border: none; color: white; cursor: pointer; }
     </style>
 </head>
 <body>
 
-<!-- Auth Screen -->
-<div id="authScreen" class="auth-screen">
-    <div class="auth-card">
-        <h1>💚 VibeChat</h1>
-        <p class="text-sm text-gray-400 mb-6">تواصل مع أصدقائك بكل سهولة</p>
+<!-- شاشة تسجيل الدخول -->
+<div id="loginScreen" class="login-screen">
+    <div class="login-card">
+        <h1>SHΔDØW</h1>
+        <div class="auth-tabs">
+            <button class="auth-tab active" onclick="switchAuth('login')">تسجيل الدخول</button>
+            <button class="auth-tab" onclick="switchAuth('register')">إنشاء حساب</button>
+        </div>
         <div id="loginForm" class="auth-form active">
             <input type="email" id="loginEmail" placeholder="البريد الإلكتروني">
             <input type="password" id="loginPassword" placeholder="كلمة المرور">
-            <button onclick="login()">تسجيل الدخول</button>
-            <button class="switch-btn" onclick="switchAuth('register')">إنشاء حساب جديد</button>
-            <div id="loginMsg" class="error-msg"></div>
+            <button onclick="login()">دخول</button>
+            <div id="loginMsg" class="text-red-500 text-sm text-center mt-3"></div>
         </div>
         <div id="registerForm" class="auth-form">
-            <input type="text" id="regName" placeholder="الاسم الكامل">
-            <input type="text" id="regUsername" placeholder="اسم المستخدم (بدون @)">
+            <input type="text" id="regName" placeholder="اسم المستخدم">
             <input type="email" id="regEmail" placeholder="البريد الإلكتروني">
-            <input type="password" id="regPass" placeholder="كلمة المرور">
-            <input type="password" id="regConfirmPass" placeholder="تأكيد كلمة المرور">
+            <input type="password" id="regPass" placeholder="كلمة المرور (6 أحرف)">
             <button onclick="register()">إنشاء حساب</button>
-            <button class="switch-btn" onclick="switchAuth('login')">لديك حساب؟ تسجيل الدخول</button>
-            <div id="regMsg" class="error-msg"></div>
+            <div id="regMsg" class="text-red-500 text-sm text-center mt-3"></div>
         </div>
     </div>
 </div>
 
-<!-- Main App -->
+<!-- التطبيق الرئيسي -->
 <div id="mainApp">
-    <div class="app-container">
-        <!-- Sidebar -->
-        <div class="sidebar">
-            <div class="sidebar-avatar" id="sidebarAvatar" onclick="openProfile()">
-                <i class="fas fa-user"></i>
-            </div>
-            <i class="fas fa-search sidebar-icon" onclick="openSearchModal()"></i>
-            <i class="fas fa-bell sidebar-icon" onclick="openNotifications()"></i>
-            <i class="fas fa-cog sidebar-icon" onclick="openSettings()"></i>
-            <i class="fas fa-sign-out-alt sidebar-icon" style="margin-top: auto;" onclick="logout()"></i>
+    <div class="top-bar">
+        <div class="logo"><div class="logo-icon">S</div><span class="logo-text">SHΔDØW</span></div>
+        <div class="top-tabs">
+            <button class="top-tab" onclick="switchFeed('following')">متابَعين</button>
+            <button class="top-tab active" onclick="switchFeed('forYou')">لك</button>
         </div>
-        
-        <!-- Users List -->
-        <div class="users-list">
-            <div class="users-header">
-                <h2>المستخدمين</h2>
-                <div class="search-box">
-                    <input type="text" id="searchUserInput" placeholder="ابحث باسم المستخدم..." onkeyup="searchUsers()">
-                    <button onclick="searchUsers()">بحث</button>
-                </div>
+        <div class="top-icons">
+            <!-- زر LIVE العام -->
+            <i class="fas fa-circle text-red-500 top-icon" onclick="openLiveStreamsList()" style="color: #fe2c55 !important; font-size: 18px;"> LIVE</i>
+            <i class="fas fa-music top-icon" onclick="openSounds()"></i>
+        </div>
+    </div>
+
+    <div class="videos-container" id="videosContainer"><div class="loading"><div class="spinner"></div><span>جاري التحميل...</span></div></div>
+
+    <div class="bottom-nav">
+        <button class="nav-item active" onclick="switchTab('home')"><i class="fas fa-home"></i><span>الرئيسية</span></button>
+        <button class="nav-item" onclick="switchTab('search')"><i class="fas fa-search"></i><span>بحث</span></button>
+        <div class="create-btn" onclick="openUploadPanel()"><i class="fas fa-plus"></i></div>
+        <button class="nav-item" onclick="openConversations()"><i class="fas fa-envelope"></i><span>الرسائل</span></button>
+        <button class="nav-item" onclick="openMyProfile()"><i class="fas fa-user"></i><span>الملف</span></button>
+    </div>
+
+    <div id="copyToast" class="copy-toast">✅ تم نسخ الرابط</div>
+
+    <!-- لوحة المشاركة -->
+    <div id="sharePanel" class="share-panel"><div class="panel-header"><h3>مشاركة</h3><button class="close-btn" onclick="closeShare()"><i class="fas fa-times"></i></button></div><div class="share-option" onclick="copyLink()"><i class="fas fa-link text-blue-400"></i><span>نسخ الرابط</span></div><div class="share-option" onclick="shareToWhatsApp()"><i class="fab fa-whatsapp text-green-500"></i><span>WhatsApp</span></div><div class="share-option" onclick="shareToTelegram()"><i class="fab fa-telegram text-blue-400"></i><span>Telegram</span></div><div class="share-option" onclick="downloadVideo()"><i class="fas fa-download"></i><span>تنزيل</span></div></div>
+
+    <!-- لوحة التعليقات -->
+    <div id="commentsPanel" class="comments-panel"><div class="panel-header"><h3>التعليقات</h3><button class="close-btn" onclick="closeComments()"><i class="fas fa-times"></i></button></div><div id="commentsList" class="p-4"></div><div class="add-comment p-4"><input type="text" id="commentInput" placeholder="أضف تعليقاً..."><button onclick="addComment()">نشر</button></div></div>
+
+    <!-- لوحة البحث -->
+    <div id="searchPanel" class="search-panel"><div class="panel-header"><h3>بحث</h3><button class="close-btn" onclick="closeSearch()"><i class="fas fa-times"></i></button></div><div class="p-4"><input type="text" id="searchInput" class="search-input" placeholder="بحث..." onkeyup="searchAll()"></div><div id="searchResults" class="p-4"></div></div>
+
+    <!-- لوحة الأصوات -->
+    <div id="soundsPanel" class="sounds-panel"><div class="panel-header"><h3>الأصوات الشائعة</h3><button class="close-btn" onclick="closeSounds()"><i class="fas fa-times"></i></button></div><div id="soundsList" class="p-2"></div></div>
+
+    <!-- لوحة الإشعارات -->
+    <div id="notificationsPanel" class="notifications-panel"><div class="panel-header"><h3>الإشعارات</h3><button class="close-btn" onclick="closeNotifications()"><i class="fas fa-times"></i></button></div><div id="notificationsList" class="p-4"></div></div>
+
+    <!-- لوحة الرفع المتطورة -->
+    <div id="uploadPanel" class="upload-panel">
+        <div class="panel-header"><h3><i class="fas fa-upload ml-2"></i> رفع فيديو جديد</h3><button class="close-btn" onclick="closeUploadPanel()"><i class="fas fa-times"></i></button></div>
+        <div class="upload-content">
+            <div class="video-preview-area" onclick="document.getElementById('videoFileInput').click()">
+                <div class="preview-placeholder"><i class="fas fa-cloud-upload-alt"></i><p>اضغط لاختيار فيديو</p><span class="preview-hint">MP4, MOV, WebM - حتى 100MB</span></div>
+                <video id="videoPreview" class="video-preview" controls></video>
             </div>
-            <div class="users-container" id="usersContainer">
-                <div class="loading"><div class="spinner"></div><span>جاري التحميل...</span></div>
+            <input type="file" id="videoFileInput" accept="video/*" style="display:none" onchange="selectVideoFile(this)">
+            <div class="upload-form">
+                <div class="form-group"><label><i class="fas fa-pen"></i> وصف الفيديو</label><textarea id="videoDescription" rows="3" placeholder="اكتب وصفاً للفيديو... استخدم # للهاشتاقات" oninput="showHashtagSuggestions()"></textarea><div id="hashtagSuggestions" class="hashtag-suggestions"></div></div>
+                <div class="form-group"><label><i class="fas fa-music"></i> اسم المقطع / الصوت</label><input type="text" id="videoMusic" placeholder="مثال: Original Sound - أو اسم أغنية" oninput="showMusicSuggestions()"><div id="musicSuggestions" class="music-suggestions"></div></div>
+                <div class="form-row"><div class="form-group half"><label><i class="fas fa-users"></i> الرؤية</label><select id="videoVisibility"><option value="public">عام (الكل يشاهده)</option><option value="private">خاص (المتابعون فقط)</option></select></div><div class="form-group half"><label><i class="fas fa-comment"></i> التعليقات</label><select id="videoComments"><option value="all">الكل يمكنه التعليق</option><option value="followers">المتابعون فقط</option><option value="none">تعطيل التعليقات</option></select></div></div>
+                <div class="upload-progress" id="uploadProgressBar" style="display:none"><div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div><div class="progress-text" id="progressText">0%</div></div>
+                <div class="upload-actions"><button class="cancel-upload-btn" onclick="closeUploadPanel()">إلغاء</button><button class="upload-submit-btn" id="uploadSubmitBtn" onclick="uploadVideoWithDetails()">رفع الفيديو</button></div>
+                <div id="uploadStatus" class="upload-status"></div>
             </div>
         </div>
+    </div>
+
+    <!-- صفحة الملف الشخصي -->
+    <div id="profilePanel" class="profile-panel">
+        <div class="back-btn" onclick="closeProfile()"><i class="fas fa-arrow-right"></i></div>
+        <div class="profile-header"><div class="profile-avatar-large" id="profileAvatarDisplay" onclick="changeAvatar()">👤</div><h2 id="profileNameDisplay" class="mt-4 text-xl font-bold"></h2><p id="profileBioDisplay" class="text-sm opacity-70 mt-1"></p><div class="profile-stats"><div class="stat"><div class="stat-number" id="profileFollowing">0</div><div class="stat-label">يتابع</div></div><div class="stat"><div class="stat-number" id="profileFollowers">0</div><div class="stat-label">متابع</div></div><div class="stat"><div class="stat-number" id="profileLikes">0</div><div class="stat-label">إجمالي الإعجابات</div></div></div><div id="profileActions"></div></div>
+        <div class="p-4"><h4 class="mb-3 font-bold">فيديوهاتي</h4><div id="profileVideosList" class="videos-grid"></div></div>
+    </div>
+
+    <!-- لوحة تعديل الملف الشخصي -->
+    <div id="editProfilePanel" class="edit-profile-panel">
+        <div class="panel-header"><h3>تعديل الملف الشخصي</h3><button class="close-btn" onclick="closeEditProfile()"><i class="fas fa-times"></i></button></div>
+        <div class="avatar-upload text-center p-6" onclick="changeAvatar()"><div class="profile-avatar-large" id="editAvatarDisplay">👤</div><p class="text-xs text-gray-400 mt-2">اضغط لتغيير الصورة</p></div>
+        <input type="file" id="avatarInput" accept="image/*" style="display:none" onchange="uploadAvatar(this)">
+        <div class="p-4"><input type="text" id="editUsername" class="edit-input" placeholder="اسم المستخدم"><textarea id="editBio" class="edit-input mt-3" rows="3" placeholder="السيرة الذاتية"></textarea><button onclick="saveProfile()" class="save-btn">حفظ التغييرات</button></div>
+    </div>
+
+    <!-- لوحة الدردشة الخاصة -->
+    <div id="privateChatPanel" class="private-chat-panel">
+        <div class="panel-header">
+            <div class="flex items-center gap-3">
+                <div class="w-10 h-10 rounded-full bg-gradient-to-r from-[#fe2c55] to-[#ff6b6b] flex items-center justify-center" id="chatAvatarDisplay">👤</div>
+                <h3 id="chatUserName">محادثة خاصة</h3>
+            </div>
+            <button class="close-btn" onclick="closePrivateChat()"><i class="fas fa-times"></i></button>
+        </div>
+        <div id="privateMessagesList" class="private-messages-list"></div>
+        <div class="private-chat-input">
+            <div class="chat-attachment" onclick="document.getElementById('chatImageInput').click()">
+                <i class="fas fa-image"></i>
+            </div>
+            <input type="file" id="chatImageInput" accept="image/*" style="display:none" onchange="sendChatImage(this)">
+            <input type="text" id="privateMessageInput" placeholder="اكتب رسالة..." class="flex-1">
+            <button onclick="sendPrivateMessage()" class="send-btn"><i class="fas fa-paper-plane"></i></button>
+        </div>
+    </div>
+
+    <!-- قائمة المحادثات الخاصة -->
+    <div id="conversationsPanel" class="conversations-panel">
+        <div class="panel-header"><h3>المحادثات الخاصة</h3><button class="close-btn" onclick="closeConversations()"><i class="fas fa-times"></i></button></div>
+        <div id="conversationsList" class="conversations-list"></div>
+    </div>
+
+    <!-- ========== لوحة قائمة البثوث ========== -->
+    <div id="liveStreamsPanel" class="live-streams-panel">
+        <div class="panel-header">
+            <h3><i class="fas fa-circle text-red-500"></i> البث المباشر الآن</h3>
+            <button class="close-btn" onclick="closeLiveStreamsList()"><i class="fas fa-times"></i></button>
+        </div>
+        <div id="liveStreamsList" class="p-4"></div>
+        <div class="p-4 border-t border-gray-800">
+            <button onclick="startBroadcast()" class="w-full py-3 rounded-full bg-gradient-to-r from-[#fe2c55] to-[#ff6b6b] text-white font-bold">
+                <i class="fas fa-video"></i> ابدأ بثاً مباشراً
+            </button>
+        </div>
+    </div>
+
+    <!-- ========== نافذة مشاهدة البث ========== -->
+    <div id="liveViewerOverlay">
+        <video id="liveRemoteVideo" autoplay playsinline></video>
+        <div style="position: absolute; top: 20px; left: 20px; background: rgba(0,0,0,0.6); padding: 8px 16px; border-radius: 30px; z-index: 10;">
+            <i class="fas fa-circle text-red-500"></i> <span id="liveViewerCount">0</span> مشاهدة
+        </div>
+        <button onclick="closeLiveViewer()" style="position: absolute; top: 20px; right: 20px; background: rgba(0,0,0,0.6); width: 40px; height: 40px; border-radius: 50%; border: none; color: white; font-size: 20px; cursor: pointer; z-index: 10;">✕</button>
         
-        <!-- Chat Area -->
-        <div class="chat-area">
-            <div class="chat-header" id="chatHeader" style="display: none;">
-                <div class="chat-header-info">
-                    <div class="chat-header-avatar" id="chatAvatar"></div>
-                    <div class="chat-header-name">
-                        <h3 id="chatName"></h3>
-                        <span class="chat-header-status" id="chatStatus"></span>
-                    </div>
-                </div>
-                <div class="chat-actions">
-                    <button class="chat-action" id="pinChatBtn" onclick="pinChat()"><i class="fas fa-thumbtack"></i></button>
-                    <button class="chat-action" id="muteChatBtn" onclick="toggleMuteChat()"><i class="fas fa-bell-slash"></i></button>
-                    <button class="chat-action" id="audioCallBtn" onclick="startCall('audio')"><i class="fas fa-phone"></i></button>
-                    <button class="chat-action" id="videoCallBtn" onclick="startCall('video')"><i class="fas fa-video"></i></button>
-                    <button class="chat-action" id="blockUserBtn" onclick="blockUser()"><i class="fas fa-ban"></i></button>
+        <div style="position: absolute; bottom: 100px; left: 16px; z-index: 10;">
+            <div style="display: flex; align-items: center; gap: 12px;">
+                <div id="liveBroadcasterAvatar" style="width: 48px; height: 48px; border-radius: 50%; background: linear-gradient(135deg, #fe2c55, #ff6b6b); display: flex; align-items: center; justify-content: center; font-size: 20px; border: 2px solid white;">👤</div>
+                <div>
+                    <div id="liveBroadcasterName" style="font-weight: bold;">@المذيع</div>
+                    <div id="liveStreamTitle" style="font-size: 12px; opacity: 0.8;"></div>
                 </div>
             </div>
-            
-            <div id="pinnedMessageBar" class="pinned-message" style="display: none;"></div>
-            
-            <div class="messages-area" id="messagesArea">
-                <div class="loading"><div class="spinner"></div><span>اختر مستخدم لبدء المحادثة</span></div>
+        </div>
+
+        <div class="live-chat-container">
+            <div id="liveChatMessages" class="live-chat-messages"></div>
+            <div class="live-chat-input">
+                <input type="text" id="liveChatInput" placeholder="أضف تعليق...">
+                <button onclick="sendLiveChatMessage()"><i class="fas fa-paper-plane"></i></button>
             </div>
-            
-            <div class="input-area" id="inputArea" style="display: none;">
-                <button onclick="toggleEmojiPicker()"><i class="far fa-smile"></i></button>
-                <button onclick="document.getElementById('fileInput').click()"><i class="fas fa-paperclip"></i></button>
-                <input type="text" id="messageInput" placeholder="اكتب رسالة...">
-                <button id="recordBtn" onclick="startRecording()"><i class="fas fa-microphone"></i></button>
-                <button onclick="sendMessage()"><i class="fas fa-paper-plane"></i></button>
-                <input type="file" id="fileInput" accept="image/*,video/*,audio/*,application/pdf,application/msword,application/zip" style="display: none" onchange="sendFile()">
-                <div id="replyPreview" style="display: none;" class="reply-preview"></div>
-            </div>
-            <div id="emojiPicker" class="emoji-picker"></div>
+        </div>
+
+        <div style="position: absolute; right: 12px; bottom: 120px; display: flex; flex-direction: column; gap: 24px; z-index: 10;">
+            <button class="side-btn" onclick="sendLiveGift('❤️')"><i class="fas fa-gift"></i><span>هدية</span></button>
+            <button class="side-btn" onclick="toggleLiveSound()"><i id="liveSoundIcon" class="fas fa-volume-up"></i><span>صوت</span></button>
         </div>
     </div>
 </div>
 
-<!-- Modals -->
-<div id="searchModal" class="modal"><div class="modal-content"><div class="modal-title">🔍 إضافة مستخدم جديد</div><input type="text" id="searchUsername" class="modal-input" placeholder="@username"><div id="searchResult"></div><div class="modal-buttons"><button class="modal-btn-secondary" onclick="closeSearchModal()">إلغاء</button><button class="modal-btn-primary" onclick="searchByUsername()">بحث</button></div></div></div>
-<div id="profileModal" class="modal"><div class="modal-content"><div class="modal-title">👤 الملف الشخصي</div><div style="text-align:center;margin-bottom:16px;"><div id="profileAvatar" class="w-20 h-20 rounded-full bg-[#00a884] mx-auto flex items-center justify-center overflow-hidden"><i class="fas fa-user fa-3x text-white"></i></div><button class="text-[#00a884] text-sm mt-2" onclick="changeProfilePhoto()">تغيير الصورة</button></div><input type="text" id="profileNameInput" class="modal-input" placeholder="الاسم"><input type="text" id="profileUsernameInput" class="modal-input" placeholder="اسم المستخدم"><textarea id="profileBioInput" class="modal-input" rows="3" placeholder="السيرة الذاتية"></textarea><div class="modal-buttons"><button class="modal-btn-secondary" onclick="closeProfileModal()">إلغاء</button><button class="modal-btn-primary" onclick="saveProfile()">حفظ</button></div></div></div>
-<div id="settingsModal" class="modal"><div class="modal-content"><div class="modal-title">⚙️ الإعدادات</div><button onclick="toggleTheme()" class="w-full bg-[#2a3942] text-white py-3 rounded-full mb-2">🌙 الوضع الليلي/النهاري</button><button onclick="requestNotificationPermission()" class="w-full bg-[#2a3942] text-white py-3 rounded-full mb-2">🔔 تفعيل الإشعارات</button><button onclick="clearAllChats()" class="w-full bg-red-600 text-white py-3 rounded-full mb-2">🗑️ مسح جميع المحادثات</button><div class="modal-buttons"><button class="modal-btn-secondary" onclick="closeSettingsModal()">إغلاق</button></div></div></div>
-<div id="callModal" class="call-modal"><div id="remoteVideo" class="remote-video"></div><div id="localVideo" class="local-video"></div><div class="call-controls"><button class="call-btn" id="muteBtn" onclick="toggleMute()"><i class="fas fa-microphone"></i></button><button class="call-btn" id="videoToggleBtn" onclick="toggleVideoTrack()"><i class="fas fa-video"></i></button><button class="call-btn call-end" onclick="endCall()"><i class="fas fa-phone-slash"></i></button></div></div>
-
-<div id="toast" class="toast"></div>
-
-<script type="module" src="firebase-config.js"></script>
-<script type="module" src="script.js"></script>
+<script src="firebase-config.js"></script>
+<script src="script.js"></script>
 </body>
 </html>

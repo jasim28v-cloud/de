@@ -1,280 +1,233 @@
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
-  <title>VibeChat - تواصل عبر @المعرف</title>
-  <meta name="description" content="VibeChat - تطبيق محادثة احترافي يعتمد على البريد الإلكتروني والمعرف @Username" />
-  <script src="https://cdn.tailwindcss.com"></script>
-  <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: 'Segoe UI', Tahoma, sans-serif; background: #0b141a; color: #e9edef; }
-    .glass { background: rgba(17, 27, 33, 0.8); backdrop-filter: blur(12px); }
-    .glass-strong { background: rgba(17, 27, 33, 0.95); backdrop-filter: blur(20px); }
-    .scrollbar-thin::-webkit-scrollbar { width: 4px; }
-    .scrollbar-thin::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 10px; }
-    @keyframes pulse-dot { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:0.7;transform:scale(1.2)} }
-    .pulse-dot { animation: pulse-dot 2s infinite; }
-    @keyframes typing { 0%,100%{opacity:0.3} 50%{opacity:1} }
-    .typing-dot { animation: typing 1.4s infinite; }
-    audio::-webkit-media-controls-panel { background: #2a3942; }
-    .message-bubble { transition: all 0.2s ease; }
-    .message-bubble:active { transform: scale(0.98); }
-    #attachment-preview { animation: slideUp 0.3s ease; }
-    @keyframes slideUp { from { transform: translateY(100%); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
-  </style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>VibeChat | محادثات فورية متطورة</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://download.agora.io/sdk/release/AgoraRTC_N.js"></script>
+    <script src="https://upload-widget.cloudinary.com/global/all.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Inter', sans-serif; background: #0b141a; color: #e9edef; min-height: 100vh; }
+        
+        /* Auth Screen */
+        .auth-screen { position: fixed; inset: 0; z-index: 1000; background: #0b141a; display: flex; align-items: center; justify-content: center; padding: 20px; }
+        .auth-card { background: #202c33; border-radius: 32px; padding: 40px 32px; width: 100%; max-width: 420px; text-align: center; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.5); }
+        .auth-card h1 { font-size: 38px; font-weight: 800; margin-bottom: 8px; color: #00a884; }
+        .auth-card input { width: 100%; padding: 14px 18px; margin: 10px 0; border-radius: 28px; background: #2a3942; border: none; color: #e9edef; font-size: 15px; }
+        .auth-card input:focus { outline: none; background: #3b4a54; }
+        .auth-card button { width: 100%; padding: 14px; margin-top: 16px; background: #00a884; border: none; border-radius: 28px; color: white; font-weight: 600; cursor: pointer; transition: 0.2s; }
+        .auth-card button:hover { background: #008f6f; }
+        .auth-card .switch-btn { background: transparent; color: #00a884; border: 1px solid #00a884; margin-top: 12px; }
+        .auth-form { display: none; }
+        .auth-form.active { display: block; }
+        .error-msg { color: #ff6b6b; font-size: 12px; margin-top: 8px; }
+        .auth-footer { margin-top: 24px; color: #8696a0; font-size: 13px; }
+        .auth-footer a { color: #00a884; cursor: pointer; }
+
+        /* Main App */
+        #mainApp { display: none; height: 100vh; background: #0b141a; }
+        .app-container { display: flex; height: 100%; }
+
+        /* Sidebar */
+        .sidebar { width: 80px; background: #111b21; border-left: 1px solid #2a3942; display: flex; flex-direction: column; align-items: center; padding: 20px 0; gap: 24px; }
+        .sidebar-avatar { width: 48px; height: 48px; border-radius: 50%; background: #00a884; display: flex; align-items: center; justify-content: center; cursor: pointer; overflow: hidden; }
+        .sidebar-avatar img { width: 100%; height: 100%; object-fit: cover; }
+        .sidebar-icon { color: #8696a0; font-size: 22px; cursor: pointer; transition: 0.2s; }
+        .sidebar-icon:hover { color: #00a884; }
+
+        /* Users List */
+        .users-list { width: 320px; background: #202c33; border-left: 1px solid #2a3942; display: flex; flex-direction: column; height: 100%; }
+        .users-header { padding: 20px; border-bottom: 1px solid #2a3942; }
+        .users-header h2 { font-size: 20px; font-weight: 700; margin-bottom: 16px; }
+        .search-box { display: flex; gap: 10px; }
+        .search-box input { flex: 1; padding: 12px 16px; background: #2a3942; border: none; border-radius: 28px; color: #e9edef; font-size: 14px; }
+        .search-box button { background: #00a884; border: none; border-radius: 28px; padding: 0 20px; color: white; cursor: pointer; }
+        .users-container { flex: 1; overflow-y: auto; padding: 12px; }
+        .user-item { display: flex; align-items: center; gap: 12px; padding: 12px; border-radius: 20px; cursor: pointer; transition: 0.2s; margin-bottom: 4px; }
+        .user-item:hover { background: #2a3942; }
+        .user-item.active { background: #2a3942; }
+        .user-avatar { width: 48px; height: 48px; border-radius: 50%; background: #00a884; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+        .user-avatar img { width: 100%; height: 100%; object-fit: cover; }
+        .user-info { flex: 1; }
+        .user-name { font-weight: 600; font-size: 15px; margin-bottom: 4px; }
+        .user-username { font-size: 12px; color: #8696a0; }
+        .user-status { font-size: 10px; color: #00a884; }
+
+        /* Chat Area */
+        .chat-area { flex: 1; display: flex; flex-direction: column; background: #0b141a; }
+        .chat-header { padding: 16px 24px; background: #202c33; border-bottom: 1px solid #2a3942; display: flex; align-items: center; justify-content: space-between; }
+        .chat-header-info { display: flex; align-items: center; gap: 12px; }
+        .chat-header-avatar { width: 44px; height: 44px; border-radius: 50%; background: #00a884; overflow: hidden; }
+        .chat-header-avatar img { width: 100%; height: 100%; object-fit: cover; }
+        .chat-header-name h3 { font-size: 16px; font-weight: 600; margin-bottom: 2px; }
+        .chat-header-status { font-size: 11px; color: #8696a0; }
+        .chat-actions { display: flex; gap: 16px; }
+        .chat-action { background: none; border: none; color: #aebac1; font-size: 20px; cursor: pointer; padding: 8px; border-radius: 50%; transition: 0.2s; }
+        .chat-action:hover { background: #2a3942; color: #00a884; }
+
+        /* Messages */
+        .messages-area { flex: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 12px; }
+        .message { display: flex; max-width: 70%; animation: fadeIn 0.2s ease; position: relative; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+        .message.sent { align-self: flex-end; flex-direction: row-reverse; }
+        .message.received { align-self: flex-start; }
+        .message-bubble { padding: 10px 14px; border-radius: 18px; font-size: 14px; line-height: 1.4; }
+        .message.sent .message-bubble { background: #005c4b; color: white; border-bottom-right-radius: 4px; }
+        .message.received .message-bubble { background: #202c33; color: #e9edef; border-bottom-left-radius: 4px; }
+        .message-actions { position: absolute; top: -30px; right: 0; display: none; gap: 8px; background: #2a3942; padding: 6px 12px; border-radius: 20px; z-index: 10; }
+        .message:hover .message-actions { display: flex; }
+        .message-action { background: none; border: none; color: #aebac1; cursor: pointer; font-size: 12px; padding: 4px 8px; border-radius: 12px; }
+        .message-action:hover { background: #3b4a54; color: #00a884; }
+        .reply-preview { background: rgba(0,168,132,0.2); padding: 8px 12px; border-radius: 12px; margin-bottom: 6px; font-size: 12px; border-right: 3px solid #00a884; }
+        .message-media { margin-top: 6px; border-radius: 12px; overflow: hidden; max-width: 250px; cursor: pointer; }
+        .message-media img { width: 100%; border-radius: 12px; }
+        .message-audio audio { height: 36px; border-radius: 20px; }
+        .message-time { font-size: 10px; color: #8696a0; margin-top: 4px; text-align: right; }
+        .pinned-message { background: rgba(0,168,132,0.1); padding: 8px 12px; border-radius: 12px; margin-bottom: 12px; font-size: 12px; border-right: 3px solid #00a884; cursor: pointer; }
+
+        /* Input Area */
+        .input-area { padding: 16px; background: #202c33; display: flex; gap: 12px; align-items: center; }
+        .input-area input { flex: 1; padding: 12px 18px; background: #2a3942; border: none; border-radius: 28px; color: #e9edef; font-size: 14px; }
+        .input-area input:focus { outline: none; }
+        .input-area button { background: none; border: none; color: #aebac1; font-size: 22px; cursor: pointer; padding: 8px; border-radius: 50%; transition: 0.2s; }
+        .input-area button:hover { color: #00a884; background: #2a3942; }
+        .emoji-picker { position: absolute; bottom: 80px; right: 20px; background: #202c33; border-radius: 20px; padding: 12px; display: none; z-index: 100; width: 320px; max-height: 300px; overflow-y: auto; }
+
+        /* Modals */
+        .modal { position: fixed; inset: 0; background: rgba(0,0,0,0.7); z-index: 1000; display: flex; align-items: center; justify-content: center; opacity: 0; visibility: hidden; transition: 0.2s; }
+        .modal.open { opacity: 1; visibility: visible; }
+        .modal-content { background: #202c33; border-radius: 28px; padding: 28px; width: 90%; max-width: 460px; }
+        .modal-title { font-size: 20px; font-weight: 700; text-align: center; margin-bottom: 20px; }
+        .modal-input { width: 100%; padding: 12px 16px; background: #2a3942; border: none; border-radius: 28px; color: #e9edef; margin-bottom: 16px; }
+        .modal-buttons { display: flex; gap: 12px; margin-top: 20px; }
+        .modal-buttons button { flex: 1; padding: 12px; border-radius: 28px; font-weight: 600; cursor: pointer; border: none; }
+        .modal-btn-primary { background: #00a884; color: white; }
+        .modal-btn-secondary { background: #2a3942; color: white; }
+
+        /* Call Modal */
+        .call-modal { position: fixed; inset: 0; background: #000; z-index: 1100; display: flex; flex-direction: column; align-items: center; justify-content: center; opacity: 0; visibility: hidden; transition: 0.2s; }
+        .call-modal.open { opacity: 1; visibility: visible; }
+        .remote-video { width: 100%; height: 80%; background: #000; }
+        .local-video { position: absolute; bottom: 20px; right: 20px; width: 120px; height: 160px; background: #000; border-radius: 12px; overflow: hidden; }
+        .call-controls { position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%); display: flex; gap: 20px; }
+        .call-btn { width: 56px; height: 56px; border-radius: 50%; border: none; font-size: 24px; cursor: pointer; background: #2a3942; color: white; }
+        .call-end { background: #dc2626; }
+
+        .loading { text-align: center; padding: 40px; color: #8696a0; }
+        .spinner { width: 32px; height: 32px; border: 2px solid rgba(0,168,132,0.2); border-top-color: #00a884; border-radius: 50%; animation: spin 0.8s linear infinite; margin: 0 auto 12px; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .toast { position: fixed; bottom: 100px; left: 50%; transform: translateX(-50%); background: #2a3942; color: white; padding: 10px 20px; border-radius: 28px; font-size: 13px; z-index: 1200; opacity: 0; transition: 0.2s; pointer-events: none; white-space: nowrap; }
+
+        @media (max-width: 768px) { .users-list { width: 280px; } .message { max-width: 85%; } }
+    </style>
 </head>
-<body class="h-screen w-screen overflow-hidden">
+<body>
 
-  <!-- ============ AUTH SCREEN ============ -->
-  <div id="auth-screen" class="min-h-screen flex items-center justify-center p-4">
-    <div class="w-full max-w-md">
-      <div class="text-center mb-8">
-        <div class="w-16 h-16 rounded-2xl bg-[#00a884] mx-auto flex items-center justify-center mb-4">
-          <span class="text-white font-bold text-2xl">V</span>
+<!-- Auth Screen -->
+<div id="authScreen" class="auth-screen">
+    <div class="auth-card">
+        <h1>💚 VibeChat</h1>
+        <p class="text-sm text-gray-400 mb-6">تواصل مع أصدقائك بكل سهولة</p>
+        <div id="loginForm" class="auth-form active">
+            <input type="email" id="loginEmail" placeholder="البريد الإلكتروني">
+            <input type="password" id="loginPassword" placeholder="كلمة المرور">
+            <button onclick="login()">تسجيل الدخول</button>
+            <button class="switch-btn" onclick="switchAuth('register')">إنشاء حساب جديد</button>
+            <div id="loginMsg" class="error-msg"></div>
         </div>
-        <h1 class="text-2xl font-bold text-white">VibeChat</h1>
-        <p class="text-sm text-gray-400 mt-1">تواصل عبر @المعرف</p>
-      </div>
-
-      <div class="glass-strong rounded-2xl p-6">
-        <div class="flex mb-6 bg-white/5 rounded-lg p-1">
-          <button onclick="showAuthTab('login')" id="tab-login" class="flex-1 py-2 rounded-md text-sm font-medium bg-[#00a884] text-white transition-all">تسجيل الدخول</button>
-          <button onclick="showAuthTab('register')" id="tab-register" class="flex-1 py-2 rounded-md text-sm font-medium text-gray-400 hover:text-white transition-all">حساب جديد</button>
+        <div id="registerForm" class="auth-form">
+            <input type="text" id="regName" placeholder="الاسم الكامل">
+            <input type="text" id="regUsername" placeholder="اسم المستخدم (بدون @)">
+            <input type="email" id="regEmail" placeholder="البريد الإلكتروني">
+            <input type="password" id="regPass" placeholder="كلمة المرور">
+            <input type="password" id="regConfirmPass" placeholder="تأكيد كلمة المرور">
+            <button onclick="register()">إنشاء حساب</button>
+            <button class="switch-btn" onclick="switchAuth('login')">لديك حساب؟ تسجيل الدخول</button>
+            <div id="regMsg" class="error-msg"></div>
         </div>
-
-        <p id="auth-error" class="hidden text-xs text-red-400 text-center bg-red-500/10 rounded-lg py-2 mb-4"></p>
-
-        <form id="login-form" onsubmit="handleLogin(event)" class="space-y-4">
-          <div class="relative">
-            <svg class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg>
-            <input id="login-email" type="email" placeholder="البريد الإلكتروني" required class="w-full h-11 rounded-lg bg-white/5 pl-4 pr-10 text-sm text-white placeholder:text-gray-500 outline-none focus:ring-1 focus:ring-[#00a884]/50 text-right" dir="rtl" />
-          </div>
-          <div class="relative">
-            <svg class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-            <input id="login-password" type="password" placeholder="كلمة المرور" required minlength="6" class="w-full h-11 rounded-lg bg-white/5 pl-4 pr-10 text-sm text-white placeholder:text-gray-500 outline-none focus:ring-1 focus:ring-[#00a884]/50 text-right" dir="rtl" />
-          </div>
-          <button id="login-btn" type="submit" class="w-full h-11 rounded-lg bg-[#00a884] hover:bg-[#00a884]/90 text-white font-medium text-sm flex items-center justify-center gap-2 transition-colors">تسجيل الدخول</button>
-        </form>
-
-        <form id="register-form" onsubmit="handleRegister(event)" class="space-y-4 hidden">
-          <div class="relative">
-            <input id="reg-displayname" type="text" placeholder="الاسم الظاهر" class="w-full h-11 rounded-lg bg-white/5 px-4 text-sm text-white placeholder:text-gray-500 outline-none focus:ring-1 focus:ring-[#00a884]/50 text-right" dir="rtl" />
-          </div>
-          <div class="relative">
-            <input id="reg-username" type="text" placeholder="اسم المستخدم (username)" required class="w-full h-11 rounded-lg bg-white/5 px-4 text-sm text-white placeholder:text-gray-500 outline-none focus:ring-1 focus:ring-[#00a884]/50 text-right" dir="rtl" />
-          </div>
-          <div class="relative">
-            <input id="reg-email" type="email" placeholder="البريد الإلكتروني" required class="w-full h-11 rounded-lg bg-white/5 px-4 text-sm text-white placeholder:text-gray-500 outline-none focus:ring-1 focus:ring-[#00a884]/50 text-right" dir="rtl" />
-          </div>
-          <div class="relative">
-            <input id="reg-password" type="password" placeholder="كلمة المرور" required minlength="6" class="w-full h-11 rounded-lg bg-white/5 px-4 text-sm text-white placeholder:text-gray-500 outline-none focus:ring-1 focus:ring-[#00a884]/50 text-right" dir="rtl" />
-          </div>
-          <button id="reg-btn" type="submit" class="w-full h-11 rounded-lg bg-[#00a884] hover:bg-[#00a884]/90 text-white font-medium text-sm flex items-center justify-center gap-2 transition-colors">إنشاء حساب</button>
-        </form>
-      </div>
     </div>
-  </div>
+</div>
 
-  <!-- ============ APP SCREEN ============ -->
-  <div id="app-screen" class="hidden h-screen w-screen flex overflow-hidden">
-
-    <div id="left-panel" class="flex h-full w-full sm:w-auto">
-
-      <div class="flex flex-col items-center justify-between h-full w-[68px] py-6 glass-strong border-r border-white/5">
-        <div class="flex flex-col items-center gap-1">
-          <div id="sidebar-avatar" class="w-10 h-10 rounded-xl bg-[#00a884] flex items-center justify-center mb-6 text-white font-bold text-lg overflow-hidden">V</div>
-          <button onclick="showPanel('chats')" class="w-12 h-12 flex items-center justify-center rounded-xl hover:bg-white/5 transition text-gray-400 hover:text-white" title="المحادثات">
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-          </button>
-          <button onclick="showPanel('search')" class="w-12 h-12 flex items-center justify-center rounded-xl hover:bg-white/5 transition text-gray-400 hover:text-white" title="بحث">
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-          </button>
-          <button onclick="showPanel('profile')" class="w-12 h-12 flex items-center justify-center rounded-xl hover:bg-white/5 transition text-gray-400 hover:text-white" title="الملف الشخصي">
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-          </button>
+<!-- Main App -->
+<div id="mainApp">
+    <div class="app-container">
+        <!-- Sidebar -->
+        <div class="sidebar">
+            <div class="sidebar-avatar" id="sidebarAvatar" onclick="openProfile()">
+                <i class="fas fa-user"></i>
+            </div>
+            <i class="fas fa-search sidebar-icon" onclick="openSearchModal()"></i>
+            <i class="fas fa-bell sidebar-icon" onclick="openNotifications()"></i>
+            <i class="fas fa-cog sidebar-icon" onclick="openSettings()"></i>
+            <i class="fas fa-sign-out-alt sidebar-icon" style="margin-top: auto;" onclick="logout()"></i>
         </div>
-        <button onclick="handleLogoutSafe()" class="w-12 h-12 flex items-center justify-center rounded-xl text-gray-400 hover:text-red-400 transition" title="خروج">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
-        </button>
-      </div>
-
-      <div class="flex-1 sm:w-[340px] h-full border-r border-white/5 flex flex-col">
-
-        <div id="chats-panel" class="flex flex-col h-full">
-          <div class="px-4 pt-4 pb-3">
-            <div class="flex items-center justify-between mb-3">
-              <h1 class="text-xl font-semibold text-white">المحادثات</h1>
-              <button onclick="showPanel('search')" class="w-9 h-9 rounded-lg bg-[#00a884]/10 hover:bg-[#00a884]/20 flex items-center justify-center transition">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#00a884" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-              </button>
+        
+        <!-- Users List -->
+        <div class="users-list">
+            <div class="users-header">
+                <h2>المستخدمين</h2>
+                <div class="search-box">
+                    <input type="text" id="searchUserInput" placeholder="ابحث باسم المستخدم..." onkeyup="searchUsers()">
+                    <button onclick="searchUsers()">بحث</button>
+                </div>
             </div>
-          </div>
-          <div id="chat-list" class="flex-1 overflow-y-auto scrollbar-thin px-2"></div>
+            <div class="users-container" id="usersContainer">
+                <div class="loading"><div class="spinner"></div><span>جاري التحميل...</span></div>
+            </div>
         </div>
-
-        <div id="search-panel" class="hidden flex flex-col h-full">
-          <div class="px-4 pt-4 pb-3">
-            <div class="flex items-center gap-3 mb-3">
-              <button onclick="showPanel('chats')" class="w-9 h-9 rounded-lg flex items-center justify-center text-gray-400 hover:text-white">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m15 18-6-6 6-6"/></svg>
-              </button>
-              <h2 class="text-lg font-semibold text-white">بحث عن مستخدم</h2>
+        
+        <!-- Chat Area -->
+        <div class="chat-area">
+            <div class="chat-header" id="chatHeader" style="display: none;">
+                <div class="chat-header-info">
+                    <div class="chat-header-avatar" id="chatAvatar"></div>
+                    <div class="chat-header-name">
+                        <h3 id="chatName"></h3>
+                        <span class="chat-header-status" id="chatStatus"></span>
+                    </div>
+                </div>
+                <div class="chat-actions">
+                    <button class="chat-action" id="pinChatBtn" onclick="pinChat()"><i class="fas fa-thumbtack"></i></button>
+                    <button class="chat-action" id="muteChatBtn" onclick="toggleMuteChat()"><i class="fas fa-bell-slash"></i></button>
+                    <button class="chat-action" id="audioCallBtn" onclick="startCall('audio')"><i class="fas fa-phone"></i></button>
+                    <button class="chat-action" id="videoCallBtn" onclick="startCall('video')"><i class="fas fa-video"></i></button>
+                    <button class="chat-action" id="blockUserBtn" onclick="blockUser()"><i class="fas fa-ban"></i></button>
+                </div>
             </div>
-            <div class="relative">
-              <input id="user-search-input" type="text" placeholder="ابحث بـ @username..." oninput="handleUserSearch()" class="w-full h-10 rounded-lg bg-white/5 px-4 text-sm text-white placeholder:text-gray-500 outline-none focus:ring-1 focus:ring-[#00a884]/50 text-right" dir="rtl" />
+            
+            <div id="pinnedMessageBar" class="pinned-message" style="display: none;"></div>
+            
+            <div class="messages-area" id="messagesArea">
+                <div class="loading"><div class="spinner"></div><span>اختر مستخدم لبدء المحادثة</span></div>
             </div>
-          </div>
-          <div id="search-results" class="flex-1 overflow-y-auto scrollbar-thin px-2"></div>
+            
+            <div class="input-area" id="inputArea" style="display: none;">
+                <button onclick="toggleEmojiPicker()"><i class="far fa-smile"></i></button>
+                <button onclick="document.getElementById('fileInput').click()"><i class="fas fa-paperclip"></i></button>
+                <input type="text" id="messageInput" placeholder="اكتب رسالة...">
+                <button id="recordBtn" onclick="startRecording()"><i class="fas fa-microphone"></i></button>
+                <button onclick="sendMessage()"><i class="fas fa-paper-plane"></i></button>
+                <input type="file" id="fileInput" accept="image/*,video/*,audio/*,application/pdf,application/msword,application/zip" style="display: none" onchange="sendFile()">
+                <div id="replyPreview" style="display: none;" class="reply-preview"></div>
+            </div>
+            <div id="emojiPicker" class="emoji-picker"></div>
         </div>
-
-        <div id="profile-panel" class="hidden flex flex-col h-full">
-          <div class="flex items-center gap-3 px-4 h-16 border-b border-white/5">
-            <button onclick="showPanel('chats')" class="w-9 h-9 rounded-lg flex items-center justify-center text-gray-400 hover:text-white">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m15 18-6-6 6-6"/></svg>
-            </button>
-            <h2 class="text-lg font-semibold text-white">الملف الشخصي</h2>
-          </div>
-          <div class="flex-1 overflow-y-auto p-6 space-y-6">
-            <div class="flex flex-col items-center">
-              <div class="relative">
-                <div id="profile-avatar" class="w-28 h-28 rounded-full bg-[#2a3942] flex items-center justify-center overflow-hidden text-4xl font-bold text-white">?</div>
-                <label class="absolute bottom-0 right-0 w-10 h-10 rounded-full bg-[#00a884] flex items-center justify-center cursor-pointer">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
-                  <input type="file" accept="image/*" class="hidden" onchange="uploadAvatar(this.files[0])" />
-                </label>
-              </div>
-              <p id="profile-username" class="text-gray-400 text-sm mt-2">@username</p>
-            </div>
-            <div class="space-y-4">
-              <div>
-                <label class="text-xs text-gray-500 block mb-1 text-right">الاسم الظاهر</label>
-                <input id="edit-displayname" type="text" class="w-full h-10 rounded-lg bg-white/5 px-4 text-sm text-white outline-none focus:ring-1 focus:ring-[#00a884]/50 text-right" dir="rtl" />
-              </div>
-              <div>
-                <label class="text-xs text-gray-500 block mb-1 text-right">النبذة</label>
-                <textarea id="edit-bio" rows="3" class="w-full rounded-lg bg-white/5 px-4 py-2 text-sm text-white outline-none focus:ring-1 focus:ring-[#00a884]/50 resize-none text-right" dir="rtl"></textarea>
-              </div>
-            </div>
-            <button onclick="updateProfileInfo()" class="w-full h-10 rounded-lg bg-[#00a884] hover:bg-[#00a884]/90 text-white text-sm font-medium transition-colors">حفظ التعديلات</button>
-          </div>
-        </div>
-      </div>
     </div>
+</div>
 
-    <!-- Chat Panel -->
-    <div id="chat-panel" class="hidden sm:flex flex-1 flex-col h-full min-w-0">
-      <div class="flex items-center justify-between px-4 h-16 border-b border-white/5 glass flex-shrink-0">
-        <div class="flex items-center gap-3">
-          <button onclick="goBackMobile()" class="w-9 h-9 rounded-lg flex items-center justify-center text-gray-400 hover:text-white sm:hidden">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m15 18-6-6 6-6"/></svg>
-          </button>
-          <div id="chat-header-avatar" class="w-10 h-10 rounded-full bg-[#2a3942] flex items-center justify-center text-white font-semibold text-sm overflow-hidden">?</div>
-          <div>
-            <h2 id="chat-header-name" class="text-sm font-semibold text-white"></h2>
-            <p class="text-xs"><span id="chat-header-username" class="text-gray-400"></span> · <span id="chat-header-status" class="text-gray-500">غير متصل</span></p>
-            <div id="typing-indicator" class="hidden text-xs text-[#00a884]">يكتب...</div>
-          </div>
-        </div>
-        <div class="flex items-center gap-1">
-          <button onclick="startCallFixed(false)" class="w-9 h-9 rounded-lg flex items-center justify-center text-gray-400 hover:text-white hover:bg-white/5 transition" title="مكالمة صوتية">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
-          </button>
-          <button onclick="startCallFixed(true)" class="w-9 h-9 rounded-lg flex items-center justify-center text-gray-400 hover:text-white hover:bg-white/5 transition" title="مكالمة فيديو">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
-          </button>
-        </div>
-      </div>
+<!-- Modals -->
+<div id="searchModal" class="modal"><div class="modal-content"><div class="modal-title">🔍 إضافة مستخدم جديد</div><input type="text" id="searchUsername" class="modal-input" placeholder="@username"><div id="searchResult"></div><div class="modal-buttons"><button class="modal-btn-secondary" onclick="closeSearchModal()">إلغاء</button><button class="modal-btn-primary" onclick="searchByUsername()">بحث</button></div></div></div>
+<div id="profileModal" class="modal"><div class="modal-content"><div class="modal-title">👤 الملف الشخصي</div><div style="text-align:center;margin-bottom:16px;"><div id="profileAvatar" class="w-20 h-20 rounded-full bg-[#00a884] mx-auto flex items-center justify-center overflow-hidden"><i class="fas fa-user fa-3x text-white"></i></div><button class="text-[#00a884] text-sm mt-2" onclick="changeProfilePhoto()">تغيير الصورة</button></div><input type="text" id="profileNameInput" class="modal-input" placeholder="الاسم"><input type="text" id="profileUsernameInput" class="modal-input" placeholder="اسم المستخدم"><textarea id="profileBioInput" class="modal-input" rows="3" placeholder="السيرة الذاتية"></textarea><div class="modal-buttons"><button class="modal-btn-secondary" onclick="closeProfileModal()">إلغاء</button><button class="modal-btn-primary" onclick="saveProfile()">حفظ</button></div></div></div>
+<div id="settingsModal" class="modal"><div class="modal-content"><div class="modal-title">⚙️ الإعدادات</div><button onclick="toggleTheme()" class="w-full bg-[#2a3942] text-white py-3 rounded-full mb-2">🌙 الوضع الليلي/النهاري</button><button onclick="requestNotificationPermission()" class="w-full bg-[#2a3942] text-white py-3 rounded-full mb-2">🔔 تفعيل الإشعارات</button><button onclick="clearAllChats()" class="w-full bg-red-600 text-white py-3 rounded-full mb-2">🗑️ مسح جميع المحادثات</button><div class="modal-buttons"><button class="modal-btn-secondary" onclick="closeSettingsModal()">إغلاق</button></div></div></div>
+<div id="callModal" class="call-modal"><div id="remoteVideo" class="remote-video"></div><div id="localVideo" class="local-video"></div><div class="call-controls"><button class="call-btn" id="muteBtn" onclick="toggleMute()"><i class="fas fa-microphone"></i></button><button class="call-btn" id="videoToggleBtn" onclick="toggleVideoTrack()"><i class="fas fa-video"></i></button><button class="call-btn call-end" onclick="endCall()"><i class="fas fa-phone-slash"></i></button></div></div>
 
-      <!-- Reply Preview -->
-      <div id="reply-preview" class="hidden px-3 pt-2"></div>
+<div id="toast" class="toast"></div>
 
-      <!-- Messages -->
-      <div id="messages-area" class="flex-1 overflow-y-auto scrollbar-thin px-4 py-4 space-y-1"></div>
-
-      <!-- Attachment Preview -->
-      <div id="attachment-preview" class="hidden fixed bottom-24 left-4 right-4 bg-[#1a2730] rounded-xl p-2 z-20"></div>
-
-      <div class="px-3 py-3 border-t border-white/5 glass flex-shrink-0">
-        <div id="normal-input" class="flex items-center gap-2">
-          <label id="attach-btn" class="w-10 h-10 rounded-lg flex items-center justify-center text-gray-400 hover:text-white hover:bg-white/5 cursor-pointer transition">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
-            <input type="file" accept="image/*,video/*" class="hidden" onchange="handleAttachmentSelect(this.files[0])" />
-          </label>
-          <input id="msg-input" type="text" placeholder="اكتب رسالة..." onkeydown="if(event.key==='Enter'){handleSendMessage();}else{onTypingStart();}" class="flex-1 h-10 rounded-lg bg-white/5 px-4 text-sm text-white placeholder:text-gray-500 outline-none focus:ring-1 focus:ring-[#00a884]/50 text-right" dir="rtl" />
-          <button onclick="if($('msg-input').value.trim()){handleSendMessage()}else{startRecordingFixed()}" class="w-10 h-10 rounded-lg bg-[#00a884] hover:bg-[#00a884]/90 flex items-center justify-center text-white transition" id="send-or-mic-btn">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
-          </button>
-        </div>
-
-        <div id="recording-input" class="hidden flex items-center gap-2">
-          <button onclick="cancelRecordingFixed()" class="w-10 h-10 rounded-lg flex items-center justify-center text-red-400 hover:bg-red-500/10 transition">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-          </button>
-          <div class="flex-1 flex items-center justify-center gap-3">
-            <div class="w-3 h-3 rounded-full bg-red-500 pulse-dot"></div>
-            <span id="rec-timer" class="text-sm text-white font-mono">0:00</span>
-            <span class="text-xs text-gray-400">جارٍ التسجيل...</span>
-          </div>
-          <button onclick="sendVoiceMessageFixed()" class="w-10 h-10 rounded-lg bg-[#00a884] hover:bg-[#00a884]/90 flex items-center justify-center text-white transition">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
-          </button>
-        </div>
-      </div>
-    </div>
-
-    <div id="empty-chat" class="hidden sm:flex flex-1 items-center justify-center">
-      <div class="text-center">
-        <div class="w-20 h-20 rounded-2xl bg-[#00a884]/10 mx-auto flex items-center justify-center mb-4">
-          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#00a884" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-        </div>
-        <h2 class="text-xl font-semibold text-white mb-2">VibeChat</h2>
-        <p class="text-gray-500 text-sm">اختر محادثة أو ابحث عن مستخدم بـ @username</p>
-      </div>
-    </div>
-
-    <!-- Call Screen -->
-    <div id="call-screen" class="hidden fixed inset-0 z-50 bg-[#0b141a] flex flex-col items-center justify-center">
-      <div id="remote-video" class="hidden absolute inset-0 bg-[#1a2730]"></div>
-      <div id="call-avatar-area" class="flex flex-col items-center z-10">
-        <div class="w-24 h-24 rounded-full bg-[#2a3942] flex items-center justify-center text-3xl font-bold text-white mb-4">?</div>
-        <p id="call-user-name" class="text-white font-semibold text-lg"></p>
-        <p id="call-user-handle" class="text-gray-400 text-sm"></p>
-        <p id="call-status" class="text-[#00a884] text-xs mt-2 pulse-dot">جارٍ الاتصال...</p>
-      </div>
-      <div id="local-video" class="hidden absolute top-4 right-4 w-32 h-44 rounded-xl overflow-hidden border-2 border-white/10 z-20 bg-[#2a3942]"></div>
-      <div class="absolute bottom-8 flex items-center gap-4 z-30">
-        <button id="mic-btn" onclick="toggleMic()" class="w-14 h-14 rounded-full bg-[#2a3942] flex items-center justify-center text-white">
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
-        </button>
-        <button onclick="endCall()" class="w-16 h-16 rounded-full bg-red-500 flex items-center justify-center text-white">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.68 13.31a16 16 0 0 0 3.41 2.6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91"/><line x1="23" y1="1" x2="1" y2="23"/></svg>
-        </button>
-      </div>
-    </div>
-  </div>
-
-  <script>
-    function showAuthTab(tab) {
-      document.getElementById("auth-error").classList.add("hidden");
-      if (tab === "login") {
-        document.getElementById("login-form").classList.remove("hidden");
-        document.getElementById("register-form").classList.add("hidden");
-        document.getElementById("tab-login").className = "flex-1 py-2 rounded-md text-sm font-medium bg-[#00a884] text-white transition-all";
-        document.getElementById("tab-register").className = "flex-1 py-2 rounded-md text-sm font-medium text-gray-400 hover:text-white transition-all";
-      } else {
-        document.getElementById("login-form").classList.add("hidden");
-        document.getElementById("register-form").classList.remove("hidden");
-        document.getElementById("tab-register").className = "flex-1 py-2 rounded-md text-sm font-medium bg-[#00a884] text-white transition-all";
-        document.getElementById("tab-login").className = "flex-1 py-2 rounded-md text-sm font-medium text-gray-400 hover:text-white transition-all";
-      }
-    }
-
-    function $(id) { return document.getElementById(id); }
-    function hide(id) { const el = $(id); if (el) el.classList.add("hidden"); }
-    function show(id) { const el = $(id); if (el) el.classList.remove("hidden"); }
-  </script>
-
-  <script type="module" src="./script.js"></script>
+<script type="module" src="firebase-config.js"></script>
+<script type="module" src="script.js"></script>
 </body>
 </html>
